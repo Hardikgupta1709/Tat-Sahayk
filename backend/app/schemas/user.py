@@ -1,4 +1,5 @@
 from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, ConfigDict, EmailStr, Field
 from typing import Optional
 from datetime import datetime
 
@@ -15,6 +16,13 @@ class UserBase(BaseModel):
 class UserCreate(UserBase):
     password: str
     phone:    Optional[str] = None
+
+class UserSignup(BaseModel):
+    email: EmailStr
+    full_name: Optional[str] = None
+    password: str = Field(min_length=6, max_length=128)
+
+    model_config = ConfigDict(extra="forbid")
 
 class UserUpdate(BaseModel):
     full_name:     Optional[str]   = None

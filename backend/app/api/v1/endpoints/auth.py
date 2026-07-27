@@ -15,6 +15,7 @@ from app.services.aws_services import send_otp_sms, generate_otp
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from app.core.config import settings
+from app.schemas.user import (UserCreate, UserResponse, Token, UserUpdate, UserSignup,)
 
 router = APIRouter()
 
@@ -79,21 +80,34 @@ def google_login(payload: dict, db: Session = Depends(get_db)):
     return {"access_token": access_token, "token_type": "bearer"}
 
 @router.post("/signup", response_model=UserResponse)
-def create_user(user_in: UserCreate, db: Session = Depends(get_db)):
-    user = crud_user.get_user_by_email(db, email=user_in.email)
+def create_user(
+    user_in: UserSignup,
+    db: Session = Depends(get_db),
+):
+    user = crud_user.get_user_by_email(
+        db,
+        email=user_in.email,
+    )
+
     if user:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
-    # Create user
-    new_user = crud_user.create_user(db, user=user_in)
-    
-    # Set default admin profile photo if admin
-    if new_user.role == "admin" and not new_user.profile_photo:
-        new_user.profile_photo = "/Admin DP.jpeg"
-        db.commit()
-        db.refresh(new_user)
-    
-    return new_user
+        raise HTTPException(
+            status_code=400,
+            detail="Email already registered",
+        )
+
+    # Public signup can only create citizen accounts. Administrators must
+    # be provisioned through the controlled create_admin script.
+    citizen = UserCreate(
+        email=user_in.email,
+        full_name=user_in.full_name,
+        password=user_in.password,
+        role="citizen",
+    )
+
+    return crud_user.create_user(
+        db,
+        user=citizen,
+    )
 
 @router.post("/login", response_model=Token)
 def login(db: Session = Depends(get_db), form_data: OAuth2PasswordRequestForm = Depends()):
