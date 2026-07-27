@@ -8,6 +8,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.api import api_router
+from app.api.health import router as health_router
 from app.core.config import settings
 from app.db.base import Base
 from app.db.session import engine
@@ -33,8 +34,6 @@ async def lifespan(app: FastAPI):
         scheduler = BackgroundScheduler(timezone="UTC")
 
         if settings.ENABLE_SOCIAL_HARVESTER:
-            # Imported only when enabled so local startup does not require
-            # the social harvesting service.
             from scripts.harvest_social import harvest
 
             scheduler.add_job(
@@ -47,8 +46,6 @@ async def lifespan(app: FastAPI):
             logger.info("Social harvester scheduled")
 
         if settings.ENABLE_CLUSTER_ANALYSIS:
-            # Imported only when enabled so AWS/Bedrock is not initialized
-            # during a local-ML-only startup.
             from app.services.cluster_analyzer import run_cluster_analysis
 
             scheduler.add_job(
@@ -96,6 +93,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(health_router)
+
 app.include_router(
     api_router,
     prefix=settings.API_V1_PREFIX,
@@ -110,15 +109,5 @@ def read_root():
         "environment": settings.ENVIRONMENT,
         "ai_provider": settings.AI_PROVIDER,
         "docs": "/docs",
-    }
-
-
-@app.get("/health", tags=["system"])
-def health_check():
-    return {
-        "status": "healthy",
-        "service": settings.PROJECT_NAME,
-        "ai_provider": settings.AI_PROVIDER,
-        "local_ml_enabled": settings.uses_local_ml,
-        "bedrock_enabled": settings.uses_bedrock,
+        "health": "/health/ready",
     }
