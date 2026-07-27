@@ -1,13 +1,12 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { login, adminLogin, googleLogin } from "../lib/api.js";
 import { Lock, Mail, Loader2, ShieldAlert, Home, Sun, Moon, Eye, EyeOff } from "lucide-react";
 import { Link } from "react-router";
-import toast, { Toaster } from "react-hot-toast";
+import toast from "react-hot-toast";
 import { useTranslation } from "react-i18next";
 import { useTheme } from "../context/ThemeContext.jsx";
-
-const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "122233319245-p0goes7q96dtltp1dof60vlb4uakr6dd.apps.googleusercontent.com";
+import { GoogleLogin } from "@react-oauth/google";
 
 const LoginPage = () => {
   const { t } = useTranslation();
@@ -49,70 +48,6 @@ const LoginPage = () => {
       });
     },
   });
-
-  // Initialize Google Sign-In
-  useEffect(() => {
-    if (isAdmin) return; // Don't show Google login for admin
-
-    const initializeGoogleSignIn = () => {
-      if (window.google) {
-        window.google.accounts.id.initialize({
-          client_id: GOOGLE_CLIENT_ID,
-          callback: handleGoogleResponse,
-        });
-        
-        // Get container width and set button width accordingly
-        const container = document.getElementById("googleSignInButton");
-        if (container) {
-          const containerWidth = container.offsetWidth;
-          window.google.accounts.id.renderButton(
-            container,
-            {
-              theme: "outline",
-              size: "large",
-              width: Math.min(containerWidth, 400),
-              text: "continue_with",
-              shape: "pill",
-            }
-          );
-        }
-      }
-    };
-
-    // Wait for Google script to load
-    if (window.google) {
-      initializeGoogleSignIn();
-    } else {
-      window.addEventListener("load", initializeGoogleSignIn);
-      return () => window.removeEventListener("load", initializeGoogleSignIn);
-    }
-    
-    // Re-render on window resize for responsiveness
-    const handleResize = () => {
-      const container = document.getElementById("googleSignInButton");
-      if (container && window.google) {
-        container.innerHTML = ""; // Clear previous button
-        const containerWidth = container.offsetWidth;
-        window.google.accounts.id.renderButton(
-          container,
-          {
-            theme: "outline",
-            size: "large",
-            width: Math.min(containerWidth, 400),
-            text: "continue_with",
-            shape: "pill",
-          }
-        );
-      }
-    };
-    
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [isAdmin]);
-
-  const handleGoogleResponse = (response) => {
-    googleLoginMutation(response.credential);
-  };
 
   const handleLogin = (e) => {
     e.preventDefault();
@@ -282,7 +217,35 @@ const LoginPage = () => {
               </div>
 
               {/* Google Sign-In Button */}
-              <div id="googleSignInButton" className="flex justify-center w-full"></div>
+              <div
+                className={`flex justify-center w-full ${
+                  isGooglePending
+                    ? "pointer-events-none opacity-60"
+                    : ""
+                }`}
+              >
+                <GoogleLogin
+                  onSuccess={(credentialResponse) => {
+                    if (!credentialResponse.credential) {
+                      toast.error(
+                        "Google did not return a login credential."
+                      );
+                      return;
+                    }
+
+                    googleLoginMutation(credentialResponse.credential);
+                  }}
+                  onError={() => {
+                    toast.error(
+                      "Google sign-in was cancelled or is unavailable."
+                    );
+                  }}
+                  theme={dark ? "filled_black" : "outline"}
+                  size="large"
+                  shape="pill"
+                  text="continue_with"
+                />
+              </div>
 
               <div className="mt-6 text-center">
                 <p className="text-sm text-gray-500 dark:text-gray-400">
