@@ -83,6 +83,8 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
+      args:
+        INSTALL_DEV: "true"
 
     container_name: tat-sahayk-backend
     restart: unless-stopped

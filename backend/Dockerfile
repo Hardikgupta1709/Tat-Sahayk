@@ -10,11 +10,16 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
+ARG INSTALL_DEV=false
+
+COPY requirements.txt requirements-dev.txt ./
 
 RUN python -m pip install --upgrade pip \
-    && python -m pip install -r requirements.txt
-
+    && if [ "$INSTALL_DEV" = "true" ]; then \
+        python -m pip install -r requirements-dev.txt; \
+    else \
+        python -m pip install -r requirements.txt; \
+    fi
 COPY . .
 
 EXPOSE 5001
