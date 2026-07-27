@@ -34,7 +34,6 @@ class Settings(BaseSettings):
     DATABASE_SSL_MODE: DatabaseSSLMode = "disable"
     DATABASE_POOL_SIZE: int = 10
     DATABASE_MAX_OVERFLOW: int = 20
-    AUTO_CREATE_TABLES: bool = True
 
     # CORS
     CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174"

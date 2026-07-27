@@ -2,6 +2,7 @@ import logging
 import threading
 from contextlib import asynccontextmanager
 from typing import Optional
+import app.db.base  # noqa: F401
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
@@ -10,8 +11,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.api import api_router
 from app.api.health import router as health_router
 from app.core.config import settings
-from app.db.base import Base
-from app.db.session import engine
 
 
 logging.basicConfig(
@@ -25,10 +24,6 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler: Optional[BackgroundScheduler] = None
-
-    if settings.AUTO_CREATE_TABLES:
-        logger.info("Creating any missing database tables")
-        Base.metadata.create_all(bind=engine)
 
     if settings.ENABLE_SOCIAL_HARVESTER or settings.ENABLE_CLUSTER_ANALYSIS:
         scheduler = BackgroundScheduler(timezone="UTC")

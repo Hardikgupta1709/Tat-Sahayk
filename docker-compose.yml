@@ -100,7 +100,6 @@ services:
 
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-tat_sahayk}:${POSTGRES_PASSWORD:-tat_sahayk_local_password}@db:5432/${POSTGRES_DB:-tat_sahayk}
       DATABASE_SSL_MODE: disable
-      AUTO_CREATE_TABLES: "true"
 
       CORS_ORIGINS: http://localhost:5173,http://localhost:5174
 
@@ -130,12 +129,8 @@ services:
 
     command:
       [
-        "uvicorn",
-        "app.main:app",
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "5001",
+        "sh",
+        "scripts/start.sh",
         "--reload",
       ]
 
