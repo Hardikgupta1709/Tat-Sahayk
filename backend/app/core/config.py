@@ -1,11 +1,14 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal, Optional
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 AIProvider = Literal["local", "bedrock", "hybrid"]
+MediaStorageProvider = Literal["local", "s3"]
 Environment = Literal["development", "test", "production"]
+
 DatabaseSSLMode = Literal[
     "disable",
     "allow",
@@ -36,9 +39,11 @@ class Settings(BaseSettings):
     DATABASE_MAX_OVERFLOW: int = 20
 
     # CORS
-    CORS_ORIGINS: str = "http://localhost:5173,http://localhost:5174"
+    CORS_ORIGINS: str = (
+        "http://localhost:5173,http://localhost:5174"
+    )
 
-    # AI provider selection
+    # AI provider
     AI_PROVIDER: AIProvider = "local"
     AI_FALLBACK_ENABLED: bool = False
 
@@ -46,7 +51,18 @@ class Settings(BaseSettings):
     ML_SERVICE_URL: str = "http://localhost:8000"
     ML_SERVICE_TIMEOUT_SECONDS: float = 30.0
     ML_SERVICE_HEALTH_PATH: str = "/health"
-    ML_SERVICE_ANALYZE_PATH: str = "/api/v1/analyze/report"
+    ML_SERVICE_ANALYZE_PATH: str = (
+        "/api/v1/analyze/report"
+    )
+
+    # Media storage
+    MEDIA_STORAGE_PROVIDER: MediaStorageProvider = "local"
+    LOCAL_MEDIA_DIR: str = "uploads"
+    LOCAL_MEDIA_URL: str = "/uploads"
+    MEDIA_MAX_FILE_SIZE_MB: int = 10
+    MEDIA_ALLOWED_CONTENT_TYPES: str = (
+        "image/jpeg,image/png,image/webp,image/gif"
+    )
 
     # Background processing
     ENABLE_SOCIAL_HARVESTER: bool = False
@@ -60,8 +76,12 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: Optional[str] = None
     AWS_SECRET_ACCESS_KEY: Optional[str] = None
     S3_BUCKET: Optional[str] = None
-    AWS_BEDROCK_MODEL_ID: str = "us.amazon.nova-pro-v1:0"
-    AWS_BEDROCK_TEXT_MODEL_ID: str = "us.amazon.nova-micro-v1:0"
+    AWS_BEDROCK_MODEL_ID: str = (
+        "us.amazon.nova-pro-v1:0"
+    )
+    AWS_BEDROCK_TEXT_MODEL_ID: str = (
+        "us.amazon.nova-micro-v1:0"
+    )
     SES_SOURCE_EMAIL: Optional[str] = None
 
     # Google OAuth
@@ -85,7 +105,6 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins(self) -> list[str]:
-        """Return normalized CORS origins from the comma-separated setting."""
         return [
             origin.strip().rstrip("/")
             for origin in self.CORS_ORIGINS.split(",")
@@ -99,6 +118,39 @@ class Settings(BaseSettings):
     @property
     def uses_bedrock(self) -> bool:
         return self.AI_PROVIDER in {"bedrock", "hybrid"}
+
+    @property
+    def uses_local_media(self) -> bool:
+        return self.MEDIA_STORAGE_PROVIDER == "local"
+
+    @property
+    def local_media_directory(self) -> Path:
+        return Path(
+            self.LOCAL_MEDIA_DIR
+        ).expanduser().resolve()
+
+    @property
+    def local_media_url(self) -> str:
+        normalized = self.LOCAL_MEDIA_URL.strip().strip("/")
+
+        if not normalized:
+            return "/uploads"
+
+        return f"/{normalized}"
+
+    @property
+    def media_max_file_size_bytes(self) -> int:
+        return self.MEDIA_MAX_FILE_SIZE_MB * 1024 * 1024
+
+    @property
+    def media_allowed_content_types(self) -> frozenset[str]:
+        return frozenset(
+            content_type.strip().lower()
+            for content_type in (
+                self.MEDIA_ALLOWED_CONTENT_TYPES.split(",")
+            )
+            if content_type.strip()
+        )
 
     @property
     def aws_credentials_configured(self) -> bool:

@@ -62,3 +62,19 @@ def test_report_image_lists_are_not_shared():
     first.image_filenames.append("evidence.jpg")
 
     assert second.image_filenames == []
+
+
+def test_media_upload_requires_authentication():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/media/upload",
+            files={
+                "file": (
+                    "evidence.jpg",
+                    b"prototype-image",
+                    "image/jpeg",
+                )
+            },
+        )
+
+    assert response.status_code == 401

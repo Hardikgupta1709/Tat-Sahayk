@@ -123,6 +123,12 @@ services:
       OPENWEATHER_API_KEY: ${OPENWEATHER_API_KEY:-}
       TAVILY_API_KEY: ${TAVILY_API_KEY:-}
 
+      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-local}
+      LOCAL_MEDIA_DIR: ${LOCAL_MEDIA_DIR:-/app/uploads}
+      LOCAL_MEDIA_URL: ${LOCAL_MEDIA_URL:-/uploads}
+      MEDIA_MAX_FILE_SIZE_MB: ${MEDIA_MAX_FILE_SIZE_MB:-10}
+      MEDIA_ALLOWED_CONTENT_TYPES: ${MEDIA_ALLOWED_CONTENT_TYPES:-image/jpeg,image/png,image/webp,image/gif}
+
     ports:
       - "${BACKEND_PORT:-5001}:5001"
 

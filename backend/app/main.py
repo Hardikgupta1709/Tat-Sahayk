@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from typing import Optional
 import app.db.base  # noqa: F401
 
+from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.background import BackgroundScheduler
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -80,6 +81,25 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+local_media_directory = settings.local_media_directory
+local_media_directory.mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+app.mount(
+    settings.local_media_url,
+    StaticFiles(
+        directory=str(local_media_directory),
+    ),
+    name="local-media",
+)
+
+logger.info(
+    "Media storage provider: '%s'",
+    settings.MEDIA_STORAGE_PROVIDER,
+)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -105,4 +125,5 @@ def read_root():
         "ai_provider": settings.AI_PROVIDER,
         "docs": "/docs",
         "health": "/health/ready",
+        "media_storage_provider": settings.MEDIA_STORAGE_PROVIDER,
     }
