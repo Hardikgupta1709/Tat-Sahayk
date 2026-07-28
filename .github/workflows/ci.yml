@@ -139,3 +139,25 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+
+  production-compose:
+    name: Production Compose policy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Show Docker Compose version
+        run: docker compose version
+
+      - name: Validate production deployment policy
+        run: >
+          python scripts/validate_production_compose.py
+          --env-file .env.production.example
+          --allow-example-secrets
