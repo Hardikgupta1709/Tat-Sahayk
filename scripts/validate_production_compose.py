@@ -278,6 +278,10 @@ def validate_config(
     aws_enabled = (
         backend_environment.get("AWS_ENABLED", "").lower() == "true"
     )
+    fallback_enabled = (
+        backend_environment.get("AI_FALLBACK_ENABLED", "").lower()
+        == "true"
+    )
 
     require(
         errors,
@@ -295,6 +299,13 @@ def validate_config(
             errors,
             aws_enabled,
             "backend: AWS_ENABLED must be true for Bedrock or hybrid AI",
+        )
+
+    if ai_provider == "local" and fallback_enabled:
+        require(
+            errors,
+            aws_enabled,
+            "backend: AWS_ENABLED must be true for local-to-Bedrock fallback",
         )
 
     if media_provider == "s3":

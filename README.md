@@ -362,29 +362,24 @@ alembic downgrade -1
 
 ##  **Deployment**
 
-### **Production Checklist**
+Tat-Sahayk production deployments use
+`docker-compose.production.yml` and the committed production-policy
+validator.
 
-- [ ] Set `DEBUG=False` in environment variables
-- [ ] Use strong `SECRET_KEY` (generate with `openssl rand -hex 32`)
-- [ ] Configure CORS origins to specific domains
-- [ ] Set up SSL/TLS certificates
-- [ ] Enable PostgreSQL connection pooling
-- [ ] Configure Redis persistence
-- [ ] Set up automated backups
-- [ ] Configure logging and monitoring
-- [ ] Set up CI/CD pipeline
+Follow the complete [production deployment runbook](DEPLOYMENT.md)
+for configuration, provider selection, secure administrator
+provisioning, health verification, backups, upgrades, and rollback.
 
-### **Docker Production Build**
+Before building a production release, run:
 
 ```bash
-# Build production images
-docker-compose -f docker-compose.prod.yml build
+python3 scripts/validate_production_compose.py \
+  --env-file .env.production
 
-# Start production stack
-docker-compose -f docker-compose.prod.yml up -d
-
-# View logs
-docker-compose logs -f
+docker compose \
+  --env-file .env.production \
+  -f docker-compose.production.yml \
+  config --quiet
 ```
 
 ---
