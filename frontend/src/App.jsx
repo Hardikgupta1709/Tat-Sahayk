@@ -1,47 +1,112 @@
-import { Navigate, Route, Routes } from "react-router";
+import { lazy, Suspense } from "react";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "react-hot-toast";
+import {
+  Navigate,
+  Route,
+  Routes,
+} from "react-router";
 
 import Layout from "./components/Layout.jsx";
 import useAuthUser from "./hooks/useAuthUser.js";
-import AdminDashboard from "./pages/AdminDashboard.jsx";
-import AlertsPage from "./pages/AlertsPage.jsx";
-import CreateReport from "./pages/CreateReport.jsx";
-import HomePage from "./pages/HomePage.jsx";
-import LoginPage from "./pages/LoginPage.jsx";
-import MapPage from "./pages/MapPage.jsx";
-import ProfilePage from "./pages/ProfilePage.jsx";
-import SignupPage from "./pages/SignupPage.jsx";
 
+const AdminDashboard = lazy(
+  () => import("./pages/AdminDashboard.jsx")
+);
+
+const AlertsPage = lazy(
+  () => import("./pages/AlertsPage.jsx")
+);
+
+const CreateReport = lazy(
+  () => import("./pages/CreateReport.jsx")
+);
+
+const HomePage = lazy(
+  () => import("./pages/HomePage.jsx")
+);
+
+const LoginPage = lazy(
+  () => import("./pages/LoginPage.jsx")
+);
+
+const MapPage = lazy(
+  () => import("./pages/MapPage.jsx")
+);
+
+const ProfilePage = lazy(
+  () => import("./pages/ProfilePage.jsx")
+);
+
+const SignupPage = lazy(
+  () => import("./pages/SignupPage.jsx")
+);
+
+const RouteLoadingScreen = () => (
+  <div className="h-full min-h-64 flex flex-col items-center justify-center gap-3 bg-slate-50 dark:bg-black">
+    <Loader2
+      className="animate-spin text-sky-500"
+      size={36}
+    />
+
+    <p className="text-sm text-gray-500 dark:text-gray-400">
+      Loading page…
+    </p>
+  </div>
+);
 
 const ProtectedRoute = ({
   isAuthenticated,
   children,
-}) => (
-  isAuthenticated
-    ? <Layout>{children}</Layout>
-    : <Navigate to="/login" replace />
-);
+}) => {
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
+  }
 
+  return <Layout>{children}</Layout>;
+};
 
 const AdminRoute = ({
   isAuthenticated,
   isAdmin,
   children,
-}) => (
-  isAuthenticated && isAdmin
-    ? <Layout>{children}</Layout>
-    : <Navigate to="/" replace />
-);
+}) => {
+  if (!isAuthenticated) {
+    return (
+      <Navigate
+        to="/login"
+        replace
+      />
+    );
+  }
 
+  if (!isAdmin) {
+    return (
+      <Navigate
+        to="/"
+        replace
+      />
+    );
+  }
+
+  return <Layout>{children}</Layout>;
+};
 
 const PublicLayout = ({ children }) => (
   <Layout>{children}</Layout>
 );
 
-
 const App = () => {
-  const { isLoading, authUser } = useAuthUser();
+  const {
+    isLoading,
+    authUser,
+  } = useAuthUser();
+
   const isAuthenticated = Boolean(authUser);
   const isAdmin = authUser?.role === "admin";
 
@@ -68,7 +133,8 @@ const App = () => {
             borderRadius: "10px",
             fontSize: "14px",
             fontWeight: "500",
-            boxShadow: "0 8px 24px rgba(0, 0, 0, 0.2)",
+            boxShadow:
+              "0 8px 24px rgba(0, 0, 0, 0.2)",
             maxWidth: "500px",
             minWidth: "320px",
             background: "white",
@@ -80,8 +146,10 @@ const App = () => {
             style: {
               background: "white",
               color: "#1f2937",
-              borderLeft: "4px solid #10b981",
-              boxShadow: "0 8px 24px rgba(16, 185, 129, 0.2)",
+              borderLeft:
+                "4px solid #10b981",
+              boxShadow:
+                "0 8px 24px rgba(16, 185, 129, 0.2)",
             },
           },
           error: {
@@ -90,8 +158,10 @@ const App = () => {
             style: {
               background: "white",
               color: "#1f2937",
-              borderLeft: "4px solid #ef4444",
-              boxShadow: "0 8px 24px rgba(239, 68, 68, 0.2)",
+              borderLeft:
+                "4px solid #ef4444",
+              boxShadow:
+                "0 8px 24px rgba(239, 68, 68, 0.2)",
             },
           },
           loading: {
@@ -100,8 +170,10 @@ const App = () => {
             style: {
               background: "white",
               color: "#1f2937",
-              borderLeft: "4px solid #3b82f6",
-              boxShadow: "0 8px 24px rgba(59, 130, 246, 0.2)",
+              borderLeft:
+                "4px solid #3b82f6",
+              boxShadow:
+                "0 8px 24px rgba(59, 130, 246, 0.2)",
             },
           },
         }}
@@ -111,90 +183,112 @@ const App = () => {
         }}
       />
 
-      <Routes>
-        <Route
-          path="/"
-          element={(
-            <PublicLayout>
-              <HomePage />
-            </PublicLayout>
-          )}
-        />
+      <Suspense fallback={<RouteLoadingScreen />}>
+        <Routes>
+          <Route
+            path="/"
+            element={(
+              <PublicLayout>
+                <HomePage />
+              </PublicLayout>
+            )}
+          />
 
-        <Route
-          path="/map"
-          element={(
-            <ProtectedRoute isAuthenticated={isAuthenticated}>
-              <MapPage />
-            </ProtectedRoute>
-          )}
-        />
+          <Route
+            path="/map"
+            element={(
+              <ProtectedRoute
+                isAuthenticated={isAuthenticated}
+              >
+                <MapPage />
+              </ProtectedRoute>
+            )}
+          />
 
-        <Route
-          path="/alerts"
-          element={(
-            <PublicLayout>
-              <AlertsPage />
-            </PublicLayout>
-          )}
-        />
+          <Route
+            path="/alerts"
+            element={(
+              <PublicLayout>
+                <AlertsPage />
+              </PublicLayout>
+            )}
+          />
 
-        <Route
-          path="/profile"
-          element={(
-            <ProtectedRoute isAuthenticated={isAuthenticated}>
-              <ProfilePage />
-            </ProtectedRoute>
-          )}
-        />
+          <Route
+            path="/profile"
+            element={(
+              <ProtectedRoute
+                isAuthenticated={isAuthenticated}
+              >
+                <ProfilePage />
+              </ProtectedRoute>
+            )}
+          />
 
-        <Route
-          path="/new"
-          element={(
-            <ProtectedRoute isAuthenticated={isAuthenticated}>
-              <CreateReport />
-            </ProtectedRoute>
-          )}
-        />
+          <Route
+            path="/new"
+            element={(
+              <ProtectedRoute
+                isAuthenticated={isAuthenticated}
+              >
+                <CreateReport />
+              </ProtectedRoute>
+            )}
+          />
 
-        <Route
-          path="/admin"
-          element={(
-            <AdminRoute
-              isAuthenticated={isAuthenticated}
-              isAdmin={isAdmin}
-            >
-              <AdminDashboard />
-            </AdminRoute>
-          )}
-        />
+          <Route
+            path="/admin"
+            element={(
+              <AdminRoute
+                isAuthenticated={isAuthenticated}
+                isAdmin={isAdmin}
+              >
+                <AdminDashboard />
+              </AdminRoute>
+            )}
+          />
 
-        <Route
-          path="/login"
-          element={(
-            isAuthenticated
-              ? <Navigate to="/" replace />
-              : <LoginPage />
-          )}
-        />
+          <Route
+            path="/login"
+            element={(
+              isAuthenticated
+                ? (
+                  <Navigate
+                    to="/"
+                    replace
+                  />
+                )
+                : <LoginPage />
+            )}
+          />
 
-        <Route
-          path="/signup"
-          element={(
-            isAuthenticated
-              ? <Navigate to="/" replace />
-              : <SignupPage />
-          )}
-        />
+          <Route
+            path="/signup"
+            element={(
+              isAuthenticated
+                ? (
+                  <Navigate
+                    to="/"
+                    replace
+                  />
+                )
+                : <SignupPage />
+            )}
+          />
 
-        <Route
-          path="*"
-          element={<Navigate to="/" replace />}
-        />
-      </Routes>
+          <Route
+            path="*"
+            element={(
+              <Navigate
+                to="/"
+                replace
+              />
+            )}
+          />
+        </Routes>
+      </Suspense>
     </div>
   );
 };
-
 
 export default App;
