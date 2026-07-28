@@ -1,437 +1,406 @@
-#  Tat-Sahayk - Ocean Hazard Detection & Early Warning System
+# Tat-Sahayk
 
-> **Protecting India's 7,500km coastline with AI-powered real-time intelligence**
+Tat-Sahayk is a full-stack coastal-hazard reporting and decision-support
+prototype. Citizens can submit geolocated reports with images, review
+nearby activity, and confirm reports. Administrators can verify reports,
+publish alerts, and manage response resources from map and dashboard
+views.
 
-Tat-Sahayk is an intelligent ocean hazard detection platform that combines **crowdsourced reports**, **social media monitoring**, and **AI/ML analysis** to provide real-time alerts for coastal communities across India.
+The project is local-first: it runs with the included Python ML service
+without requiring AWS. Bedrock and S3 can be enabled independently when
+cloud-backed analysis or media storage is needed.
 
-[![Python](https://img.shields.io/badge/Python-3.10-blue.svg)](https://python.org)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.109-green.svg)](https://fastapi.tiangolo.com)
-[![React](https://img.shields.io/badge/React-18.2-61dafb.svg)](https://reactjs.org)
-[![License](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+> Tat-Sahayk is a prototype and decision-support tool. Automated scores
+> require human review and must not be treated as an official emergency
+> warning.
 
----
+## Current capabilities
 
-##  **Key Features**
+- Citizen and administrator authentication with JWTs
+- Optional Google OAuth login
+- Public citizen signup with administrator self-registration blocked
+- Secure operator-managed administrator provisioning
+- Geolocated coastal-hazard reports with validated image uploads
+- Report comments, confirmations, filters, status, and severity
+- Interactive Leaflet map with reports, hotspots, shelters, response
+  deployments, forces, and annotations
+- Administrator verification workflow and dashboard
+- Local, Bedrock, and hybrid AI analysis modes
+- Configurable local-volume or S3 media storage
+- PostgreSQL/PostGIS persistence with versioned Alembic migrations
+- Health/readiness endpoints for all containerized services
+- Development and production Docker Compose configurations
+- Automated backend, ML, frontend, migration, dependency-audit, and
+  production-policy checks in GitHub Actions
 
--  **Real-Time AI Detection** - Analyzes hazard reports in <100ms with 85% accuracy
--  **Geospatial Hotspot Detection** - DBSCAN clustering with 1000x faster processing
--  **Citizen Reporting** - One-tap hazard submission with photo upload
--  **Multi-Modal Analysis** - Text + Image + Real ocean data verification
--  **Admin Dashboard** - Real-time monitoring with interactive maps
--  **Smart Alerts** - Push notifications to communities in danger zones
--  **Social Feed** - Automated RSS harvesting from trusted news sources
+## Architecture
 
----
+```mermaid
+flowchart LR
+    Browser["Browser"]
+    Frontend["React frontend<br/>Nginx"]
+    Backend["FastAPI backend"]
+    Database[("PostgreSQL<br/>PostGIS")]
+    LocalML["Python ML service"]
+    Bedrock["AWS Bedrock<br/>(optional)"]
+    LocalMedia[("Local media volume")]
+    S3["Amazon S3<br/>(optional)"]
 
-##  **Architecture**
-
+    Browser --> Frontend
+    Frontend -->|"/api and /uploads"| Backend
+    Backend --> Database
+    Backend --> LocalML
+    Backend -.-> Bedrock
+    Backend --> LocalMedia
+    Backend -.-> S3
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        FRONTEND                             │
-│  React + Tailwind CSS + Leaflet Maps + PWA                  │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────────┐
-│                        BACKEND                              │
-│  FastAPI + PostgreSQL + PostGIS + Redis + APScheduler       │
-└────────────────────┬────────────────────────────────────────┘
-                     │
-┌────────────────────▼────────────────────────────────────────┐
-│                      ML SERVICE                             │
-│  PyTorch + Transformers + spaCy + scikit-learn              │
-│  - DistilBERT Text Classification (7 hazard types)          │
-│  - CNN Image Classification                                 │
-│  - VADER Sentiment Analysis                                 │
-│  - Geospatial Analysis (Optimized KD-Tree)                  │
-└─────────────────────────────────────────────────────────────┘
-```
 
----
+Development Compose publishes all four services for inspection.
+Production Compose publishes only the Nginx frontend; the backend,
+database, and ML service stay on the internal Compose network.
 
-##  **Quick Start**
+## AI provider modes
 
-### **Prerequisites**
+Set `AI_PROVIDER` and `AI_FALLBACK_ENABLED` in the root environment
+file:
 
-- Python 3.10+
-- Node.js 18+
-- Docker & Docker Compose (optional)
+| Configuration | Behavior |
+| --- | --- |
+| `local`, fallback disabled | Use only the included ML service. |
+| `local`, fallback enabled | Use local ML first and Bedrock if local analysis fails. |
+| `bedrock`, fallback disabled | Use only Bedrock. |
+| `bedrock`, fallback enabled | Use Bedrock first and local ML if Bedrock fails. |
+| `hybrid` | Run both providers and combine available results. |
 
-### **Option 1: Docker Setup (Recommended)**
+Bedrock-backed modes require `AWS_ENABLED=true` and suitable AWS
+credentials or an IAM role. Hybrid scoring currently weights local ML
+at 45% and Bedrock at 55%. If only one hybrid provider is available,
+the result is explicitly marked as partial.
+
+The local analysis service includes:
+
+- keyword-based detection for tsunami, cyclone, storm surge, high
+  waves, coastal erosion, coastal flooding, and no-hazard text
+- VADER sentiment and urgency analysis
+- spaCy named-entity extraction
+- evidence-based citizen-report credibility scoring
+- zero-shot CLIP image classification
+- geospatial hotspot analysis
+- optional external ocean/weather verification
+
+No production accuracy, throughput, or latency benchmark is claimed by
+this repository.
+
+## Technology stack
+
+| Layer | Main technologies |
+| --- | --- |
+| Frontend | React 19, Vite 7, React Router 8, TanStack Query 5, Tailwind CSS 3, DaisyUI 4, Leaflet |
+| Backend | Python 3.11, FastAPI, SQLAlchemy 2, Alembic, Pydantic 2, JWT authentication, APScheduler |
+| Data | PostgreSQL 16 with PostGIS |
+| Local ML | Python 3.10, PyTorch, Transformers/CLIP, spaCy, NLTK/VADER, pandas, scikit-learn |
+| Optional AWS | Bedrock analysis and S3 media storage |
+| Operations | Docker Compose, Nginx, GitHub Actions |
+
+## Quick start with Docker
+
+### Prerequisites
+
+- Docker Engine or Docker Desktop
+- Docker Compose v2
+- Git
+
+### Start the complete development stack
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/tat-sahayk.git
-cd tat-sahayk
+git clone https://github.com/Hardikgupta1709/Tat-Sahayk.git
+cd Tat-Sahayk
 
-# Copy environment files and fill in your values
-cp backend/.env.example backend/.env
-cp ml-service/.env.example ml-service/.env
-cp frontend/.env.example frontend/.env
-
-# Start all services
-docker compose up --build
-
-# Access the application
-# Frontend:    http://localhost:3000
-# Backend API: http://localhost:5001 (docs at /docs)
-# ML Service:  http://localhost:8000 (docs at /docs)
-```
-
-### **Option 2: Manual Setup**
-
-#### **1. Backend Setup**
-
-```bash
-cd backend
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
 cp .env.example .env
-# Edit .env with your settings
 
-# Start the server (SQLite DB is created automatically)
-uvicorn app.main:app --reload --host 0.0.0.0 --port 5001
+docker compose config --quiet
+docker compose up --build -d
+docker compose ps
 ```
 
-#### **2. ML Service Setup**
+The first ML image build and startup can take longer because its model
+and NLP dependencies are downloaded and initialized.
+
+### Local URLs
+
+| Service | URL |
+| --- | --- |
+| Frontend | http://localhost:8080 |
+| Backend OpenAPI | http://localhost:5001/docs |
+| Backend readiness | http://localhost:5001/health/ready |
+| ML OpenAPI | http://localhost:8000/docs |
+| ML health | http://localhost:8000/health |
+| PostgreSQL/PostGIS | `localhost:5432` |
+
+Verify the running stack:
 
 ```bash
-cd ml-service
-
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Download NLP models
-python -m spacy download en_core_web_sm
-
-# Configure environment
-cp .env.example .env
-# Add your API keys (OpenWeatherMap, etc.)
-
-# Start the service
-uvicorn src.api.routes.main:app --host 0.0.0.0 --port 8000
+curl --fail http://localhost:8080/health
+curl --fail http://localhost:5001/health/ready
+curl --fail http://localhost:8000/health
 ```
 
-#### **3. Frontend Setup**
+Follow logs:
+
+```bash
+docker compose logs --follow --tail=200
+```
+
+Stop containers while preserving named volumes:
+
+```bash
+docker compose down
+```
+
+## Accounts and administrator provisioning
+
+Public signup creates citizen accounts only. Administrator accounts
+must be provisioned by an operator.
+
+With the development stack running, create a district administrator:
+
+```bash
+docker compose exec backend \
+  python scripts/create_admin.py \
+  --email admin@agency.gov.in \
+  --full-name "District Administrator" \
+  --district "Mumbai" \
+  --state "Maharashtra"
+```
+
+Create a national administrator:
+
+```bash
+docker compose exec backend \
+  python scripts/create_admin.py \
+  --email national-admin@agency.gov.in \
+  --full-name "National Administrator" \
+  --national
+```
+
+The script prompts securely for a strong password and never prints it.
+It refuses to change an existing account unless
+`--update-existing` is supplied explicitly.
+
+Production provisioning commands and operational guidance are in
+[DEPLOYMENT.md](DEPLOYMENT.md).
+
+## Configuration
+
+Use the root environment examples:
+
+- `.env.example` for development Compose
+- `.env.production.example` for production Compose
+
+Important settings:
+
+| Variable | Purpose |
+| --- | --- |
+| `SECRET_KEY` | JWT signing secret |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Development Compose database |
+| `DATABASE_URL` | Production backend database connection |
+| `AI_PROVIDER` | `local`, `bedrock`, or `hybrid` |
+| `AI_FALLBACK_ENABLED` | Enables fallback for `local` or `bedrock` primary mode |
+| `AWS_ENABLED`, `AWS_REGION` | Enables AWS-backed features |
+| `AWS_BEDROCK_MODEL_ID` | Bedrock multimodal model |
+| `MEDIA_STORAGE_PROVIDER` | `local` or `s3` |
+| `S3_BUCKET` | Required for S3 media storage |
+| `GOOGLE_CLIENT_ID` | Google OAuth web client ID |
+| `MEDIA_MAX_FILE_SIZE_MB` | Per-file upload limit |
+| `ENABLE_SOCIAL_HARVESTER` | Enables the optional scheduled feed harvester |
+| `ENABLE_CLUSTER_ANALYSIS` | Enables optional scheduled cluster analysis |
+
+Local development works with the default local provider and does not
+require AWS credentials.
+
+Do not commit `.env`, `.env.production`, access keys, OAuth secrets, or
+real production credentials.
+
+## Development workflows
+
+### Frontend with Vite
+
+Keep the backend services running through Compose, then run:
 
 ```bash
 cd frontend
-
-# Install dependencies
-npm install
-
-# Configure environment
-cp .env.example .env
-
-# Start development server
+npm ci
 npm run dev
-# Opens at http://localhost:5173
 ```
 
----
+Vite serves the frontend at `http://localhost:5173` and proxies
+`/api` and `/uploads` to the backend on port 5001.
 
-##  **Project Structure**
+### Database migrations
 
-```
-tat-sahayk/
-├── backend/                # FastAPI backend service
-│   ├── app/
-│   │   ├── api/           # API routes
-│   │   ├── core/          # Config, security
-│   │   ├── crud/          # Database operations
-│   │   ├── models/        # SQLAlchemy models
-│   │   └── schemas/       # Pydantic schemas
-│   ├── scripts/           # Utility scripts
-│   └── requirements.txt
-│
-├── ml-service/            # ML/AI service
-│   ├── src/
-│   │   ├── analytics/     # Geospatial, hotspot detection
-│   │   ├── inference/     # Text & image classifiers
-│   │   ├── models/        # ML model classes
-│   │   └── api/           # FastAPI ML endpoints
-│   ├── config/            # Settings
-│   ├── tests/             # Unit & integration tests
-│   └── requirements.txt
-│
-├── frontend/              # React frontend
-│   ├── src/
-│   │   ├── components/    # Reusable UI components
-│   │   ├── pages/         # Page components
-│   │   ├── services/      # API clients
-│   │   └── utils/         # Helper functions
-│   └── package.json
-│
-└── docker-compose.yml     # Docker orchestration
-```
+The backend applies migrations automatically when its container
+starts.
 
----
-
-##  **Configuration**
-
-### **Backend `.env`**
-
-```env
-PROJECT_NAME=Tat-Sahayk
-DATABASE_URL=postgresql://user:password@localhost:5432/tat_sahayk
-SECRET_KEY=your-secret-key-here
-ACCESS_TOKEN_EXPIRE_MINUTES=30
-
-# Cloudinary (for image uploads)
-CLOUDINARY_CLOUD_NAME=your-cloud-name
-CLOUDINARY_API_KEY=your-api-key
-CLOUDINARY_API_SECRET=your-api-secret
-```
-
-### **ML Service `.env`**
-
-```env
-# API Keys for external services
-OPENWEATHER_API_KEY=your-openweather-key
-STORMGLASS_API_KEY=your-stormglass-key
-
-# Model settings
-TEXT_MODEL_NAME=distilbert-base-uncased
-BATCH_SIZE=32
-MAX_SEQUENCE_LENGTH=512
-```
-
----
-
-##  **Testing**
-
-### **Backend Tests**
+Inspect migration state:
 
 ```bash
-cd backend
-pytest tests/ -v
+docker compose exec backend alembic current
+docker compose exec backend alembic check
 ```
 
-### **ML Service Tests**
+Create a migration after changing SQLAlchemy models:
 
 ```bash
-cd ml-service
-pytest tests/ -v --cov=src
-
-# Run specific test suites
-pytest tests/test_analytics.py -v
-pytest tests/test_api_endpoints.py -v
+docker compose exec backend \
+  alembic revision --autogenerate -m "describe the schema change"
 ```
 
-### **Integration Tests**
+Review every generated migration before applying it.
+
+## Tests and validation
+
+Run the complete backend suite:
 
 ```bash
-cd ml-service
-pytest tests/test_integration.py -v
+docker compose exec backend python -m pytest -q
 ```
 
----
-
-##  **API Documentation**
-
-Once the services are running, access the interactive API documentation:
-
-- **Backend API**: http://localhost:5001/docs
-- **ML Service API**: http://localhost:8000/docs
-
-### **Key Endpoints**
-
-#### **Backend**
-- `POST /api/v1/auth/signup` - User registration
-- `POST /api/v1/auth/login` - User authentication
-- `POST /api/v1/reports/` - Create hazard report
-- `GET /api/v1/reports/` - List reports with filters
-- `GET /api/v1/social/` - Get social media feed
-
-#### **ML Service**
-- `POST /api/v1/analyze/text` - Analyze text for hazards
-- `POST /api/v1/analyze/multimodal` - Text + Image analysis
-- `POST /api/v1/hotspots/detect` - Detect geographic hotspots
-- `POST /api/v1/verify/report` - Verify with real ocean data
-
----
-
-##  **ML Models**
-
-### **Text Classification**
-- **Model**: DistilBERT (distilbert-base-uncased)
-- **Classes**: 7 hazard types (tsunami, cyclone, high_waves, storm_surge, coastal_erosion, flood, none)
-- **Accuracy**: ~85%
-- **Inference Time**: <100ms
-
-### **Image Classification**
-- **Model**: CNN-based classifier
-- **Input**: Coastal hazard images
-- **Output**: Hazard type + confidence score
-
-### **Geospatial Analysis**
-- **Algorithm**: DBSCAN clustering with KD-Tree optimization
-- **Performance**: 1000x faster than traditional methods
-- **Use Case**: Real-time hotspot detection
-
-### **Sentiment Analysis**
-- **Model**: VADER + custom panic detection
-- **Features**: Urgency scoring, emotion analysis
-
----
-
-##  **Key Technologies**
-
-| Layer | Technologies |
-|-------|-------------|
-| **Frontend** | React 18, Vite, Tailwind CSS, Leaflet, Axios, React Router |
-| **Backend** | FastAPI, SQLite, SQLAlchemy, Pydantic, JWT Auth |
-| **ML/AI** | PyTorch, Transformers, spaCy, scikit-learn, NLTK |
-| **DevOps** | Docker, Docker Compose, Nginx |
-| **External APIs** | OpenWeatherMap, NOAA, Cloudinary, Google OAuth |
-
----
-
-##  **Performance**
-
-- **Response Time**: <100ms per text analysis
-- **Throughput**: 1000+ reports per hour
-- **Geospatial Processing**: 1000x faster with KD-Tree
-- **Database Queries**: Optimized with SQLAlchemy eager-loading
-- **API Latency**: p95 < 200ms
-
----
-
-##  **Use Cases**
-
-1. **Citizen Reporting** - Fishermen and coastal residents report hazards instantly
-2. **Government Monitoring** - Officials track threats via admin dashboard
-3. **Early Warning** - Automated alerts to communities in danger zones
-4. **Research & Analysis** - Historical data for disaster management studies
-5. **Media Intelligence** - Automated social media monitoring for emerging threats
-
----
-
-##  **Development**
-
-### **Running Tests with Coverage**
+Run the lightweight ML scoring suite:
 
 ```bash
-# ML Service tests with coverage
-cd ml-service
-pytest --cov=src --cov-report=html
-open htmlcov/index.html
-
-# Backend tests
-cd backend
-pytest --cov=app --cov-report=html
+docker compose exec ml-service \
+  pytest -q tests/test_credibility_scorer.py
 ```
 
-### **Code Formatting**
+Run integration smoke tests:
 
 ```bash
-# Python (using black)
-black backend/ ml-service/
+docker compose exec backend python scripts/test_ai_provider.py
+docker compose exec backend python scripts/test_report_workflow.py
+```
 
-# JavaScript (using prettier)
+Run frontend checks:
+
+```bash
 cd frontend
-npm run format
+npm run lint
+npm run build
+npm audit --omit=dev
 ```
 
-### **Database Migrations**
-
-```bash
-cd backend
-
-# Create new migration
-alembic revision --autogenerate -m "description"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback
-alembic downgrade -1
-```
-
----
-
-##  **Deployment**
-
-Tat-Sahayk production deployments use
-`docker-compose.production.yml` and the committed production-policy
-validator.
-
-Follow the complete [production deployment runbook](DEPLOYMENT.md)
-for configuration, provider selection, secure administrator
-provisioning, health verification, backups, upgrades, and rollback.
-
-Before building a production release, run:
+Validate the committed production example:
 
 ```bash
 python3 scripts/validate_production_compose.py \
-  --env-file .env.production
-
-docker compose \
-  --env-file .env.production \
-  -f docker-compose.production.yml \
-  config --quiet
+  --env-file .env.production.example \
+  --allow-example-secrets
 ```
 
----
+For a real production environment, use `.env.production` and omit
+`--allow-example-secrets`.
 
-##  **Contributing**
+## API overview
 
-We welcome contributions! Please follow these steps:
+Interactive OpenAPI documentation is authoritative:
 
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+- Backend: http://localhost:5001/docs
+- ML service: http://localhost:8000/docs
 
-### **Coding Standards**
+Selected backend routes:
 
-- **Python**: Follow PEP 8, use type hints
-- **JavaScript**: Use ESLint config, Prettier formatting
-- **Git Commits**: Use conventional commits (feat, fix, docs, etc.)
-- **Tests**: Write tests for new features
+| Route | Purpose |
+| --- | --- |
+| `POST /api/v1/auth/signup` | Register a citizen |
+| `POST /api/v1/auth/login` | Citizen login |
+| `POST /api/v1/auth/admin-login` | Administrator login |
+| `POST /api/v1/auth/google` | Google credential login |
+| `GET/PATCH /api/v1/auth/me` | Read or update the current user |
+| `GET/POST /api/v1/reports/` | List or create reports |
+| `GET /api/v1/reports/my` | List the current user's reports |
+| `PATCH /api/v1/reports/{id}/verify` | Administrator verification |
+| `POST /api/v1/reports/{id}/confirm` | Toggle citizen confirmation |
+| `POST /api/v1/media/upload-many` | Authenticated image upload |
+| `GET/POST /api/v1/alerts/` | Read alerts or create one as an administrator |
+| `/api/v1/map/*` | Map data and response-resource management |
 
----
+Selected ML routes:
 
-##  **License**
+| Route | Purpose |
+| --- | --- |
+| `POST /api/v1/analyze/text` | Analyze one text |
+| `POST /api/v1/analyze/batch` | Analyze multiple texts |
+| `POST /api/v1/analyze/report` | Complete report and credibility analysis |
+| `POST /api/v1/analyze/image` | Zero-shot image analysis |
+| `POST /api/v1/analyze/multimodal` | Combined text and image analysis |
+| `POST /api/v1/hotspots/detect` | Detect geospatial hotspots |
+| `POST /api/v1/verify/report` | External ocean/weather verification |
+| `GET /api/v1/models/info` | Loaded-model metadata |
 
-This project is licensed under the MIT License 
+## Repository structure
 
----
+```text
+Tat-Sahayk/
+├── backend/
+│   ├── alembic/                 # Versioned database migrations
+│   ├── app/
+│   │   ├── api/                 # Health and API routes
+│   │   ├── core/                # Configuration and security
+│   │   ├── crud/                # Database operations
+│   │   ├── models/              # SQLAlchemy models
+│   │   ├── schemas/             # Pydantic schemas
+│   │   └── services/            # AI, storage, alerts, and geocoding
+│   ├── scripts/                 # Startup, provisioning, and smoke tests
+│   └── tests/
+├── frontend/
+│   ├── src/components/
+│   ├── src/pages/
+│   ├── src/lib/
+│   ├── Dockerfile
+│   └── nginx.conf
+├── ml-service/
+│   ├── src/analytics/
+│   ├── src/api/
+│   ├── src/external/
+│   ├── src/inference/
+│   ├── src/models/
+│   └── tests/
+├── scripts/
+│   └── validate_production_compose.py
+├── docker-compose.yml
+├── docker-compose.production.yml
+└── DEPLOYMENT.md
+```
 
-##  **Team**
+## Prototype boundaries
 
-Built with  by the Tat-Sahayk team for India's coastal communities.
+- AI and credibility output is advisory and requires administrator
+  review.
+- The local text hazard detector currently uses transparent keyword
+  patterns rather than a trained transformer classifier.
+- Image classification downloads and runs the CLIP model and may be
+  resource intensive on CPU-only hosts.
+- External weather, ocean-data, OAuth, notification, Bedrock, and S3
+  behavior depends on separately configured provider credentials.
+- Production TLS termination, monitoring, and off-host backup storage
+  are infrastructure responsibilities outside the application Compose
+  file.
+- Automated tests cover core contracts and provider logic, but they
+  are not a substitute for load, accessibility, security, or
+  disaster-recovery testing.
 
-- **ML- Service**: Hardik Gupta
-- **Backend Developer**: Aadesh Chaudhari
-- **Frontend Developer**: Priyal Khandal
+## Contributing
 
----
+1. Create a focused branch.
+2. Keep credentials and generated artifacts out of commits.
+3. Add or update tests with behavior changes.
+4. Run backend, ML, frontend, and production-policy checks.
+5. Submit a pull request with validation evidence.
 
-##  **Acknowledgments**
+## Team
 
-- **INCOIS** - Indian National Centre for Ocean Information Services
-- **NDMA** - National Disaster Management Authority
-- **Coastal Communities** - For invaluable feedback and testing
-- **Open Source Community** - For amazing tools and libraries
+- ML service: Hardik Gupta
+- Backend: Aadesh Chaudhari
+- Frontend: Priyal Khandal
 
----
-
-<p align="center">
-  <strong> Every Second Counts. Every Life Matters. </strong>
-</p>
-
-<p align="center">
-  Made with  for India's Coastal Communities
-</p>
+Tat-Sahayk was created as a collaborative hackathon prototype for
+coastal-community reporting and response coordination.
