@@ -2,11 +2,13 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 AIProvider = Literal["local", "bedrock", "hybrid"]
 MediaStorageProvider = Literal["local", "s3"]
+PhoneOTPProvider = Literal["disabled", "console", "sns"]
 Environment = Literal["development", "test", "production"]
 
 DatabaseSSLMode = Literal[
@@ -64,6 +66,24 @@ class Settings(BaseSettings):
         "image/jpeg,image/png,image/webp,image/gif"
     )
 
+    # Phone verification
+    PHONE_OTP_PROVIDER: PhoneOTPProvider = "disabled"
+    PHONE_OTP_TTL_MINUTES: int = Field(
+        default=10,
+        ge=1,
+        le=30,
+    )
+    PHONE_OTP_RESEND_SECONDS: int = Field(
+        default=60,
+        ge=0,
+        le=3600,
+    )
+    PHONE_OTP_MAX_ATTEMPTS: int = Field(
+        default=5,
+        ge=1,
+        le=10,
+    )
+
     # Background processing
     ENABLE_SOCIAL_HARVESTER: bool = False
     ENABLE_CLUSTER_ANALYSIS: bool = False
@@ -102,6 +122,28 @@ class Settings(BaseSettings):
         case_sensitive=True,
         extra="ignore",
     )
+
+    @model_validator(mode="after")
+    def validate_phone_otp_configuration(self):
+        if (
+            self.ENVIRONMENT == "production"
+            and self.PHONE_OTP_PROVIDER == "console"
+        ):
+            raise ValueError(
+                "PHONE_OTP_PROVIDER=console is not allowed "
+                "in production"
+            )
+
+        if (
+            self.PHONE_OTP_PROVIDER == "sns"
+            and not self.AWS_ENABLED
+        ):
+            raise ValueError(
+                "AWS_ENABLED must be true when "
+                "PHONE_OTP_PROVIDER=sns"
+            )
+
+        return self
 
     @property
     def cors_origins(self) -> list[str]:

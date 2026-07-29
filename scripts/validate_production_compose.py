@@ -275,6 +275,9 @@ def validate_config(
 
     ai_provider = backend_environment.get("AI_PROVIDER")
     media_provider = backend_environment.get("MEDIA_STORAGE_PROVIDER")
+    phone_otp_provider = backend_environment.get(
+        "PHONE_OTP_PROVIDER"
+    )
     aws_enabled = (
         backend_environment.get("AWS_ENABLED", "").lower() == "true"
     )
@@ -292,6 +295,11 @@ def validate_config(
         errors,
         media_provider in {"local", "s3"},
         "backend: MEDIA_STORAGE_PROVIDER must be local or s3",
+    )
+    require(
+        errors,
+        phone_otp_provider in {"disabled", "sns"},
+        "backend: production PHONE_OTP_PROVIDER must be disabled or sns",
     )
 
     if ai_provider in {"bedrock", "hybrid"}:
@@ -318,6 +326,13 @@ def validate_config(
             errors,
             bool(backend_environment.get("S3_BUCKET")),
             "backend: S3_BUCKET is required for S3 media",
+        )
+
+    if phone_otp_provider == "sns":
+        require(
+            errors,
+            aws_enabled,
+            "backend: AWS_ENABLED must be true for SNS phone OTP",
         )
 
     cors_origins = backend_environment.get("CORS_ORIGINS", "")

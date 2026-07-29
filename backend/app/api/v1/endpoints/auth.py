@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordRequestForm
 from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.api import deps
@@ -29,6 +29,12 @@ from app.services.authentication import (
     generate_unusable_password,
     uses_legacy_google_password,
 )
+from app.services.phone_otp import (
+    PhoneOTPError,
+    deliver_otp,
+    generate_otp,
+    normalize_indian_phone_number,
+)
 
 
 router = APIRouter()
@@ -40,12 +46,20 @@ class GoogleLoginRequest(BaseModel):
 
 
 class OTPRequest(BaseModel):
-    phone: str
+    phone: str = Field(
+        min_length=10,
+        max_length=20,
+    )
 
 
 class OTPVerify(BaseModel):
-    phone: str
-    otp: str
+    phone: str = Field(
+        min_length=10,
+        max_length=20,
+    )
+    otp: str = Field(
+        pattern=r"^\d{6}$",
+    )
 
 
 def issue_access_token(user: User) -> dict[str, str]:
@@ -68,6 +82,29 @@ def raise_invalid_credentials() -> None:
         detail="Incorrect email or password",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def utc_now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def normalize_timestamp(timestamp: datetime) -> datetime:
+    if timestamp.tzinfo is None:
+        return timestamp.replace(tzinfo=timezone.utc)
+
+    return timestamp.astimezone(timezone.utc)
+
+
+def clear_otp_state(
+    user: User,
+    *,
+    reset_attempts: bool,
+) -> None:
+    user.otp_code = None
+    user.otp_expires_at = None
+
+    if reset_attempts:
+        user.otp_attempt_count = 0
 
 
 @router.post("/google", response_model=Token)
@@ -349,44 +386,78 @@ def send_otp(
         deps.get_current_user
     ),
 ):
-    """Send an OTP through the currently configured AWS SNS path."""
-    from app.services.aws_services import (
-        generate_otp,
-        send_otp_sms,
-    )
-
-    otp = generate_otp()
-    expires_at = (
-        datetime.now(timezone.utc)
-        + timedelta(minutes=10)
-    )
-
-    current_user.phone = request.phone
-    current_user.otp_code = otp
-    current_user.otp_expires_at = expires_at
-    current_user.phone_verified = False
-
-    success = send_otp_sms(
-        request.phone,
-        otp,
-    )
-
-    if not success:
-        db.rollback()
+    """Deliver and persist a short-lived, hashed phone OTP."""
+    try:
+        phone = normalize_indian_phone_number(
+            request.phone
+        )
+    except PhoneOTPError as exc:
         raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=(
-                "Phone verification is temporarily "
-                "unavailable"
-            ),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(exc),
+        ) from exc
+
+    now = utc_now()
+    last_sent_at = current_user.otp_last_sent_at
+
+    if last_sent_at:
+        elapsed_seconds = (
+            now
+            - normalize_timestamp(last_sent_at)
+        ).total_seconds()
+        remaining_seconds = (
+            settings.PHONE_OTP_RESEND_SECONDS
+            - elapsed_seconds
         )
 
-    db.commit()
+        if remaining_seconds > 0:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    "Please wait "
+                    f"{int(remaining_seconds) + 1} seconds "
+                    "before requesting another code"
+                ),
+            )
 
-    return {
+    otp = generate_otp()
+
+    try:
+        delivery = deliver_otp(phone, otp)
+    except PhoneOTPError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=str(exc),
+        ) from exc
+
+    current_user.phone = phone
+    current_user.phone_verified = False
+    current_user.otp_code = get_password_hash(otp)
+    current_user.otp_expires_at = (
+        now
+        + timedelta(
+            minutes=settings.PHONE_OTP_TTL_MINUTES
+        )
+    )
+    current_user.otp_attempt_count = 0
+    current_user.otp_last_sent_at = now
+    db.commit()
+    db.refresh(current_user)
+
+    response: dict[str, str | int] = {
         "message": "OTP sent successfully",
-        "expires_in_minutes": 10,
+        "provider": delivery.provider,
+        "expires_in_minutes": (
+            settings.PHONE_OTP_TTL_MINUTES
+        ),
     }
+
+    if delivery.development_otp:
+        response["development_otp"] = (
+            delivery.development_otp
+        )
+
+    return response
 
 
 @router.post("/verify-otp")
@@ -398,20 +469,45 @@ def verify_otp(
     ),
 ):
     """Verify the current OTP and mark the phone as verified."""
-    if (
-        not current_user.otp_code
-        or current_user.otp_code != request.otp
-    ):
+    try:
+        phone = normalize_indian_phone_number(
+            request.phone
+        )
+    except PhoneOTPError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid OTP",
+            detail=str(exc),
+        ) from exc
+
+    if current_user.phone != phone:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Phone number mismatch",
         )
 
     if (
-        not current_user.otp_expires_at
-        or current_user.otp_expires_at
-        < datetime.now(timezone.utc)
+        not current_user.otp_code
+        or not current_user.otp_expires_at
     ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=(
+                "No active OTP. Please request a new one."
+            ),
+        )
+
+    if (
+        normalize_timestamp(
+            current_user.otp_expires_at
+        )
+        < utc_now()
+    ):
+        clear_otp_state(
+            current_user,
+            reset_attempts=True,
+        )
+        db.commit()
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=(
@@ -419,15 +515,68 @@ def verify_otp(
             ),
         )
 
-    if current_user.phone != request.phone:
+    if (
+        current_user.otp_attempt_count
+        >= settings.PHONE_OTP_MAX_ATTEMPTS
+    ):
+        clear_otp_state(
+            current_user,
+            reset_attempts=False,
+        )
+        db.commit()
+
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Too many verification attempts. "
+                "Please request a new code."
+            ),
+        )
+
+    try:
+        otp_is_valid = verify_password(
+            request.otp,
+            current_user.otp_code,
+        )
+    except (TypeError, ValueError):
+        otp_is_valid = False
+
+    if not otp_is_valid:
+        current_user.otp_attempt_count += 1
+        attempts_exhausted = (
+            current_user.otp_attempt_count
+            >= settings.PHONE_OTP_MAX_ATTEMPTS
+        )
+
+        if attempts_exhausted:
+            clear_otp_state(
+                current_user,
+                reset_attempts=False,
+            )
+
+        db.commit()
+
+        if attempts_exhausted:
+            raise HTTPException(
+                status_code=(
+                    status.HTTP_429_TOO_MANY_REQUESTS
+                ),
+                detail=(
+                    "Too many verification attempts. "
+                    "Please request a new code."
+                ),
+            )
+
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Phone number mismatch",
+            detail="Invalid OTP",
         )
 
     current_user.phone_verified = True
-    current_user.otp_code = None
-    current_user.otp_expires_at = None
+    clear_otp_state(
+        current_user,
+        reset_attempts=True,
+    )
     db.commit()
     db.refresh(current_user)
 
