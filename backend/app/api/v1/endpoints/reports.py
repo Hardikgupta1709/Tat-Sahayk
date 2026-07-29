@@ -50,23 +50,18 @@ def send_disaster_alerts_to_nearby_users(
         # Find users within radius
         alerted_count = 0
         for user in users:
-            # Skip if user doesn't have location set
-            if not user.district or not user.state:
+            # Skip if user doesn't have coordinates set
+            if user.latitude is None or user.longitude is None:
                 continue
             
-            # For now, send to all users in the same state
-            # TODO: Implement proper distance calculation based on user's exact location
-            # For MVP, we'll use state-level filtering
+            # Calculate distance using Haversine formula
+            dist = calculate_distance(
+                report_lat, report_lon,
+                user.latitude, user.longitude
+            )
             
-            # Get report owner's state (if available)
-            report = db.query(Report).filter(Report.id == report_id).first()
-            if not report or not report.owner:
-                continue
-                
-            report_state = report.owner.state
-            
-            # Send email if user is in the same state
-            if user.state == report_state:
+            # Send email if user is within radius
+            if dist <= radius_km:
                 location_str = f"{report_lat:.4f}°N, {report_lon:.4f}°E"
                 success = send_disaster_alert_email(
                     to_email=user.email,
@@ -79,9 +74,9 @@ def send_disaster_alerts_to_nearby_users(
                 if success:
                     alerted_count += 1
         
-        print(f"✓ Sent {alerted_count} disaster alert emails")
+        logger.info(f"Sent {alerted_count} disaster alert emails for report {report_id}")
     except Exception as e:
-        print(f"Error sending disaster alerts: {e}")
+        logger.exception(f"Error sending disaster alerts for report {report_id}")
     finally:
         db.close()
 

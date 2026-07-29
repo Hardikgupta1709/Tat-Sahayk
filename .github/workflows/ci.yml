@@ -46,6 +46,10 @@ jobs:
       ENABLE_SOCIAL_HARVESTER: "false"
       ENABLE_CLUSTER_ANALYSIS: "false"
       AWS_ENABLED: "false"
+      PHONE_OTP_PROVIDER: "console"
+      PHONE_OTP_TTL_MINUTES: "10"
+      PHONE_OTP_RESEND_SECONDS: "60"
+      PHONE_OTP_MAX_ATTEMPTS: "5"
 
     defaults:
       run:
@@ -80,6 +84,9 @@ jobs:
         run: >
           python -m pytest
           --cov=app.services.ai
+          --cov=app.services.authentication
+          --cov=app.services.phone_otp
+          --cov=app.api.v1.endpoints.auth
           --cov=app.api.health
           --cov-report=term-missing
           -q
