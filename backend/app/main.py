@@ -55,6 +55,14 @@ async def lifespan(app: FastAPI):
 
         scheduler.start()
 
+        if settings.ENABLE_SOCIAL_HARVESTER:
+            from scripts.harvest_social import harvest
+            threading.Thread(
+                target=harvest,
+                name="initial-social-harvest",
+                daemon=True,
+            ).start()
+
         if settings.ENABLE_CLUSTER_ANALYSIS:
             threading.Thread(
                 target=run_cluster_analysis,

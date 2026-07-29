@@ -110,7 +110,7 @@ services:
       ML_SERVICE_URL: http://ml-service:8000
       ML_SERVICE_TIMEOUT_SECONDS: 30
 
-      ENABLE_SOCIAL_HARVESTER: "false"
+      ENABLE_SOCIAL_HARVESTER: "true"
       ENABLE_CLUSTER_ANALYSIS: "false"
 
       AWS_ENABLED: ${AWS_ENABLED:-false}

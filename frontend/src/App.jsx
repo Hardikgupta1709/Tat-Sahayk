@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { Toaster } from "react-hot-toast";
 import {
@@ -109,6 +110,41 @@ const App = () => {
 
   const isAuthenticated = Boolean(authUser);
   const isAdmin = authUser?.role === "admin";
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    // Establish WebSocket connection for real-time updates
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const host = window.location.hostname === "localhost" ? "localhost:5001" : window.location.host;
+    const ws = new WebSocket(`${protocol}//${host}/api/v1/ws`);
+
+    ws.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        if (message.type === "new_report" || message.type === "report_verified") {
+          queryClient.invalidateQueries({ queryKey: ["reports"] });
+          queryClient.invalidateQueries({ queryKey: ["adminReports"] });
+          queryClient.invalidateQueries({ queryKey: ["allAdminReports"] });
+          queryClient.invalidateQueries({ queryKey: ["reportStats"] });
+          queryClient.invalidateQueries({ queryKey: ["aiClusters"] });
+          queryClient.invalidateQueries({ queryKey: ["map-data"] });
+        } else if (message.type === "new_alert") {
+          queryClient.invalidateQueries({ queryKey: ["alerts"] });
+          queryClient.invalidateQueries({ queryKey: ["myAlerts"] });
+        } else if (message.type === "new_social_post") {
+          queryClient.invalidateQueries({ queryKey: ["socialFeed"] });
+        }
+      } catch (err) {
+        console.error("Failed to parse WebSocket message:", err);
+      }
+    };
+
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+    };
+  }, [queryClient]);
 
   if (isLoading) {
     return (

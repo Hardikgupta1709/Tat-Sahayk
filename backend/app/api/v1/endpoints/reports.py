@@ -11,6 +11,7 @@ from app.db.session import SessionLocal, get_db
 import math
 import logging
 from app.services.aws_services import send_disaster_alert_email
+from app.api.v1.endpoints.ws import manager
 from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
 
 router = APIRouter()
@@ -470,6 +471,9 @@ def create_report(
         current_user.state if hasattr(current_user, 'state') else None
     )
     
+    # Broadcast new report to connected clients
+    background_tasks.add_task(manager.broadcast, {"type": "new_report", "id": report.id})
+    
     return report
 
 
@@ -558,6 +562,9 @@ def verify_report(
             report.severity,
             report.description or "No description provided"
         )
+        
+        # Broadcast report verification to connected clients
+        background_tasks.add_task(manager.broadcast, {"type": "report_verified", "id": report.id})
     
     return report
 
