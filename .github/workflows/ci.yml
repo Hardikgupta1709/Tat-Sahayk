@@ -45,7 +45,7 @@ jobs:
       ML_SERVICE_URL: http://localhost:8000
       ENABLE_SOCIAL_HARVESTER: "false"
       ENABLE_CLUSTER_ANALYSIS: "false"
-      AWS_ENABLED: "false"
+      AZURE_ENABLED: "false"
       PHONE_OTP_PROVIDER: "console"
       PHONE_OTP_TTL_MINUTES: "10"
       PHONE_OTP_RESEND_SECONDS: "60"

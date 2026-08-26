@@ -10,7 +10,7 @@ from app.models.user import User
 from app.db.session import SessionLocal, get_db
 import math
 import logging
-from app.services.aws_services import send_disaster_alert_email
+from app.services.azure_notifications import send_disaster_alert_emails
 from app.api.v1.endpoints.ws import manager
 from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
 
@@ -38,7 +38,7 @@ def send_disaster_alerts_to_nearby_users(
     description: str,
     radius_km: float = 100.0  # Alert users within 100km
 ):
-    """Send email alerts to users near the disaster location"""
+    """Send batched email alerts to users near the disaster location"""
     db = SessionLocal()
     try:
         # Get all users with verified emails and phone numbers (active citizens)
@@ -47,35 +47,43 @@ def send_disaster_alerts_to_nearby_users(
             User.is_active == True,
             User.email.isnot(None)
         ).all()
-        
-        # Find users within radius
-        alerted_count = 0
+
+        # Collect every recipient within radius, then send in batches.
+        # Azure Communication Services caps an Azure-managed sending
+        # domain at 10 messages per hour, so one message per user would
+        # exhaust the hourly quota on a single alert.
+        recipients = []
         for user in users:
             # Skip if user doesn't have coordinates set
             if user.latitude is None or user.longitude is None:
                 continue
-            
+
             # Calculate distance using Haversine formula
             dist = calculate_distance(
                 report_lat, report_lon,
                 user.latitude, user.longitude
             )
-            
-            # Send email if user is within radius
+
             if dist <= radius_km:
-                location_str = f"{report_lat:.4f}°N, {report_lon:.4f}°E"
-                success = send_disaster_alert_email(
-                    to_email=user.email,
-                    user_name=user.full_name or "User",
-                    disaster_type=hazard_type,
-                    location=location_str,
-                    severity=severity,
-                    description=description
-                )
-                if success:
-                    alerted_count += 1
-        
-        logger.info(f"Sent {alerted_count} disaster alert emails for report {report_id}")
+                recipients.append(user.email)
+
+        if not recipients:
+            logger.info(f"No nearby recipients for report {report_id}")
+            return
+
+        location_str = f"{report_lat:.4f}°N, {report_lon:.4f}°E"
+        alerted_count = send_disaster_alert_emails(
+            recipients=recipients,
+            disaster_type=hazard_type,
+            location=location_str,
+            severity=severity,
+            description=description
+        )
+
+        logger.info(
+            f"Alerted {alerted_count} of {len(recipients)} nearby users "
+            f"for report {report_id}"
+        )
     except Exception as e:
         logger.exception(f"Error sending disaster alerts for report {report_id}")
     finally:

@@ -35,7 +35,11 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-@router.websocket("/")
+# Empty path so the "/ws" prefix yields exactly "/api/v1/ws", which is what
+# the browser client connects to. A "/" path here would register
+# "/api/v1/ws/" instead, and the resulting redirect is fatal: browsers do not
+# follow redirects during a WebSocket handshake.
+@router.websocket("")
 async def websocket_endpoint(websocket: WebSocket):
     await manager.connect(websocket)
     try:

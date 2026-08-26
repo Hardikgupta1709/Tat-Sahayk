@@ -1,0 +1,39 @@
+# Tat-Sahayk TLS edge for a single-host deployment.
+#
+# Install location on the deployment host: /etc/caddy/Caddyfile
+#
+# Caddy terminates TLS, obtains and renews Let's Encrypt certificates
+# automatically, redirects HTTP to HTTPS, and forwards everything to the
+# Compose frontend listening on 127.0.0.1:8080.
+#
+# TLS lives here rather than in docker-compose.production.yml on purpose:
+# scripts/validate_production_compose.py requires the production stack to
+# contain exactly the db, ml-service, backend and frontend services, so a
+# proxy container would fail the policy check.
+#
+# Replace both host labels below with your real domain before reloading.
+
+tat-sahayk.example.me, www.tat-sahayk.example.me {
+	encode zstd gzip
+
+	# HSTS. Start with a short max-age while testing; raise it once HTTPS is
+	# confirmed working, because browsers cache this aggressively.
+	header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+
+	# WebSocket upgrades at /api/v1/ws pass through without extra config.
+	# Long timeouts suit that connection: the server broadcasts on events and
+	# the client never sends, so the socket is idle most of the time.
+	reverse_proxy 127.0.0.1:8080 {
+		transport http {
+			read_timeout 3600s
+			write_timeout 3600s
+		}
+	}
+
+	log {
+		output file /var/log/caddy/tat-sahayk.log {
+			roll_size 10MiB
+			roll_keep 5
+		}
+	}
+}

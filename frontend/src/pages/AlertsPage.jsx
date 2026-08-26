@@ -121,16 +121,16 @@ const AlertsPage = () => {
             {showAIInfo && (
               <div className="space-y-4 pt-3 border-t border-gray-200 dark:border-[rgb(47,51,54)]">
                 <p className="text-sm text-gray-700 dark:text-gray-300 leading-relaxed">
-                  Our AI system analyzes disaster reports using 5 specialized models to verify authenticity and severity:
+                  Our AI system analyzes disaster reports using 5 specialized checks to verify authenticity and severity:
                 </p>
 
                 <div className="grid gap-3">
                   {[
-                    { name: "Image Authenticity", weight: "30%", desc: "Amazon Rekognition detects AI-generated images, deepfakes, and verifies scene consistency with reported hazard type", icon: "🖼️" },
+                    { name: "Image Authenticity", weight: "30%", desc: "Azure OpenAI vision detects AI-generated images, deepfakes, and verifies scene consistency with reported hazard type", icon: "🖼️" },
                     { name: "Geographic Verification", weight: "25%", desc: "Validates location context - coastal areas for tsunamis, flood-prone zones, earthquake regions", icon: "🌍" },
                     { name: "News Correlation", weight: "20%", desc: "Tavily web search cross-references with real-time news from trusted Indian media outlets", icon: "📰" },
                     { name: "Temporal Consistency", weight: "15%", desc: "Checks if multiple reports arrive within reasonable timeframe (6-24 hours)", icon: "⏱️" },
-                    { name: "Text Coherence", weight: "10%", desc: "Claude AI analyzes descriptions for authenticity, detecting spam and bot-like patterns", icon: "📝" },
+                    { name: "Text Coherence", weight: "10%", desc: "Azure OpenAI analyzes descriptions for authenticity, detecting spam and bot-like patterns", icon: "📝" },
                   ].map((model) => (
                     <div key={model.name} className="flex gap-3 p-3 bg-gray-50 dark:bg-[rgb(38,38,38)] rounded-xl">
                       <span className="text-2xl shrink-0">{model.icon}</span>

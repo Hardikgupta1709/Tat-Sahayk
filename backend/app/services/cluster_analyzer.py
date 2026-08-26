@@ -27,7 +27,7 @@ def haversine(lat1, lon1, lat2, lon2):
 def run_cluster_analysis():
     """
     Main job: finds geographic clusters of pending reports,
-    sends them to Bedrock for analysis, updates DB with AI scores.
+    sends them to the AI analyzer, updates DB with AI scores.
     """
     db: Session = SessionLocal()
     try:
@@ -88,7 +88,7 @@ def run_cluster_analysis():
                 _update_reports(db, cluster, result)
                 continue
 
-            # Build cluster payload for Bedrock
+            # Build cluster payload for the AI analyzer
             center_shape = to_shape(cluster[0].location)
             
             cluster_data = {

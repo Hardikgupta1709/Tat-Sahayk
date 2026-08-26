@@ -1,17 +1,37 @@
 from pathlib import Path
 
+import pytest
+
 from app.services.media_storage import (
+    AzureBlobMediaStorage,
     LocalMediaStorage,
-    S3MediaStorage,
+    MediaStorageError,
 )
 
 
-class FakeS3Client:
-    def __init__(self) -> None:
-        self.put_object_calls = []
+class FakeBlobClient:
+    def __init__(self, account: str, container: str, blob: str) -> None:
+        self.container = container
+        self.blob = blob
+        self.url = (
+            f"https://{account}.blob.core.windows.net/"
+            f"{container}/{blob}"
+        )
+        self.upload_calls = []
 
-    def put_object(self, **kwargs) -> None:
-        self.put_object_calls.append(kwargs)
+    def upload_blob(self, data, **kwargs) -> None:
+        self.upload_calls.append({"data": data, **kwargs})
+
+
+class FakeBlobServiceClient:
+    def __init__(self, account: str = "tatsahayktest") -> None:
+        self.account = account
+        self.blob_clients = []
+
+    def get_blob_client(self, container: str, blob: str):
+        client = FakeBlobClient(self.account, container, blob)
+        self.blob_clients.append(client)
+        return client
 
 
 def test_local_storage_writes_media(
@@ -62,12 +82,12 @@ def test_local_storage_generates_unique_names(
     assert first_url != second_url
 
 
-def test_s3_storage_uploads_with_content_type():
-    client = FakeS3Client()
+def test_blob_storage_uploads_with_content_type():
+    client = FakeBlobServiceClient(account="tatsahayktest")
 
-    storage = S3MediaStorage(
-        bucket="tat-sahayk-test",
-        region="ap-south-1",
+    storage = AzureBlobMediaStorage(
+        container="report-media",
+        account="tatsahayktest",
         client=client,
     )
 
@@ -78,15 +98,30 @@ def test_s3_storage_uploads_with_content_type():
     )
 
     assert public_url.startswith(
-        "https://tat-sahayk-test.s3."
-        "ap-south-1.amazonaws.com/reports/"
+        "https://tatsahayktest.blob.core.windows.net/"
+        "report-media/reports/"
     )
     assert public_url.endswith(".webp")
 
-    assert len(client.put_object_calls) == 1
-    assert client.put_object_calls[0][
-        "ContentType"
-    ] == "image/webp"
-    assert client.put_object_calls[0][
-        "Body"
-    ] == b"image-data"
+    assert len(client.blob_clients) == 1
+
+    blob_client = client.blob_clients[0]
+
+    assert blob_client.container == "report-media"
+    assert blob_client.blob.startswith("reports/")
+    assert len(blob_client.upload_calls) == 1
+
+    call = blob_client.upload_calls[0]
+
+    assert call["data"] == b"image-data"
+    # An existing blob must never be replaced: object names are random,
+    # so a collision means something is wrong rather than a re-upload.
+    assert call["overwrite"] is False
+    assert (
+        call["content_settings"].content_type == "image/webp"
+    )
+
+
+def test_blob_storage_requires_credentials_without_a_client():
+    with pytest.raises(MediaStorageError):
+        AzureBlobMediaStorage(container="report-media")

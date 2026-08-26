@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from secrets import randbelow
 
 from app.core.config import settings
-from app.services.aws_services import send_otp_sms
+from app.services.azure_notifications import send_otp_sms
 
 
 logger = logging.getLogger(__name__)
@@ -78,13 +78,13 @@ def deliver_otp(phone: str, otp: str) -> OTPDelivery:
             development_otp=otp,
         )
 
-    if provider == "sns":
+    if provider == "acs":
         if not send_otp_sms(phone, otp):
             raise PhoneOTPError(
                 "SMS delivery failed. Please try again later"
             )
 
-        return OTPDelivery(provider="sns")
+        return OTPDelivery(provider="acs")
 
     raise PhoneOTPError(
         f"Unsupported phone OTP provider: {provider}"

@@ -3,19 +3,19 @@ from typing import Callable
 
 from app.core.config import settings
 from app.services.ai.base import AIProviderError
-from app.services.ai.bedrock_provider import BedrockProvider
+from app.services.ai.azure_provider import AzureProvider
 from app.services.ai.local_provider import LocalMLProvider
 from app.services.ai.models import AIAnalysisRequest, AIAnalysisResult
 
 
 class AIService:
     """
-    Coordinates local, Bedrock, hybrid, and fallback analysis modes.
+    Coordinates local, Azure, hybrid, and fallback analysis modes.
     """
 
     def __init__(self):
         self.local_provider = LocalMLProvider()
-        self.bedrock_provider = BedrockProvider()
+        self.azure_provider = AzureProvider()
 
     def analyze(self, request: AIAnalysisRequest) -> AIAnalysisResult:
         if settings.AI_PROVIDER == "local":
@@ -23,15 +23,15 @@ class AIService:
                 request=request,
                 primary_name="local",
                 primary=self.local_provider.analyze,
-                fallback_name="bedrock",
-                fallback=self.bedrock_provider.analyze,
+                fallback_name="azure",
+                fallback=self.azure_provider.analyze,
             )
 
-        if settings.AI_PROVIDER == "bedrock":
+        if settings.AI_PROVIDER == "azure":
             return self._analyze_with_optional_fallback(
                 request=request,
-                primary_name="bedrock",
-                primary=self.bedrock_provider.analyze,
+                primary_name="azure",
+                primary=self.azure_provider.analyze,
                 fallback_name="local",
                 fallback=self.local_provider.analyze,
             )
@@ -100,9 +100,9 @@ class AIService:
             errors["local"] = str(exc)
 
         try:
-            results.append(self.bedrock_provider.analyze(request))
+            results.append(self.azure_provider.analyze(request))
         except AIProviderError as exc:
-            errors["bedrock"] = str(exc)
+            errors["azure"] = str(exc)
 
         if not results:
             raise AIProviderError(
@@ -131,14 +131,14 @@ class AIService:
         local_result = next(
             result for result in results if result.provider == "local"
         )
-        bedrock_result = next(
-            result for result in results if result.provider == "bedrock"
+        azure_result = next(
+            result for result in results if result.provider == "azure"
         )
 
-        # Bedrock has a slightly higher visual/contextual weight.
+        # Azure OpenAI has a slightly higher visual/contextual weight.
         combined_score = (
             local_result.authenticity_score * 0.45
-            + bedrock_result.authenticity_score * 0.55
+            + azure_result.authenticity_score * 0.55
         )
 
         # Only recommend false when every successful provider agrees.
@@ -154,7 +154,7 @@ class AIService:
         summary = (
             f"Hybrid score: {combined_score:.0%}. "
             f"Local ML: {local_result.authenticity_score:.0%}. "
-            f"Bedrock: {bedrock_result.authenticity_score:.0%}. "
+            f"Azure: {azure_result.authenticity_score:.0%}. "
             "Administrator verification is required."
         )
 
@@ -170,7 +170,7 @@ class AIService:
                 "provider_errors": errors,
                 "weights": {
                     "local": 0.45,
-                    "bedrock": 0.55,
+                    "azure": 0.55,
                 },
             },
         )

@@ -3,18 +3,19 @@ from app.services.ai.base import AIProvider, AIProviderError
 from app.services.ai.models import AIAnalysisRequest, AIAnalysisResult
 
 
-class BedrockProvider(AIProvider):
-    name = "bedrock"
+class AzureProvider(AIProvider):
+    name = "azure"
 
     def analyze(self, request: AIAnalysisRequest) -> AIAnalysisResult:
-        if not settings.AWS_ENABLED:
+        if not settings.AZURE_ENABLED:
             raise AIProviderError(
-                "AWS provider is disabled. Set AWS_ENABLED=true to use Bedrock."
+                "Azure provider is disabled. Set AZURE_ENABLED=true to use "
+                "Azure OpenAI."
             )
 
         try:
-            # Import lazily so local-only startup never initializes AWS.
-            from app.services.bedrock_ai import analyze_single_report
+            # Import lazily so local-only startup never initializes Azure.
+            from app.services.azure_ai import analyze_single_report
 
             raw_result = analyze_single_report(
                 description=request.analysis_text,
@@ -27,7 +28,7 @@ class BedrockProvider(AIProvider):
 
         except Exception as exc:
             raise AIProviderError(
-                f"Bedrock analysis failed: {exc}"
+                f"Azure OpenAI analysis failed: {exc}"
             ) from exc
 
         try:
@@ -47,7 +48,7 @@ class BedrockProvider(AIProvider):
 
         summary = raw_result.get(
             "preliminary_summary",
-            "Bedrock analysis completed.",
+            "Azure OpenAI analysis completed.",
         )
 
         return AIAnalysisResult(
@@ -57,6 +58,6 @@ class BedrockProvider(AIProvider):
             recommended_status=recommended_status,
             details={
                 "submitted_hazard_type": request.hazard_type,
-                "bedrock_result": raw_result,
+                "azure_result": raw_result,
             },
         )

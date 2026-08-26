@@ -26,6 +26,15 @@ PLACEHOLDER_MARKERS = {
     "replace-with",
     "your-secret",
 }
+# Checked for placeholders only when AZURE_ENABLED is true.
+AZURE_SECRET_VARIABLES = (
+    "AZURE_OPENAI_ENDPOINT",
+    "AZURE_OPENAI_API_KEY",
+    "AZURE_STORAGE_CONNECTION_STRING",
+    "ACS_CONNECTION_STRING",
+    "ACS_SENDER_EMAIL",
+    "AZURE_VIDEO_INDEXER_API_KEY",
+)
 
 
 def require(errors: list[str], condition: bool, message: str) -> None:
@@ -278,61 +287,134 @@ def validate_config(
     phone_otp_provider = backend_environment.get(
         "PHONE_OTP_PROVIDER"
     )
-    aws_enabled = (
-        backend_environment.get("AWS_ENABLED", "").lower() == "true"
+    azure_enabled = (
+        backend_environment.get("AZURE_ENABLED", "").lower() == "true"
     )
     fallback_enabled = (
         backend_environment.get("AI_FALLBACK_ENABLED", "").lower()
         == "true"
     )
-
-    require(
-        errors,
-        ai_provider in {"local", "bedrock", "hybrid"},
-        "backend: AI_PROVIDER must be local, bedrock, or hybrid",
-    )
-    require(
-        errors,
-        media_provider in {"local", "s3"},
-        "backend: MEDIA_STORAGE_PROVIDER must be local or s3",
-    )
-    require(
-        errors,
-        phone_otp_provider in {"disabled", "sns"},
-        "backend: production PHONE_OTP_PROVIDER must be disabled or sns",
+    video_indexer_enabled = (
+        backend_environment.get(
+            "AZURE_VIDEO_INDEXER_ENABLED", ""
+        ).lower()
+        == "true"
     )
 
-    if ai_provider in {"bedrock", "hybrid"}:
+    require(
+        errors,
+        ai_provider in {"local", "azure", "hybrid"},
+        "backend: AI_PROVIDER must be local, azure, or hybrid",
+    )
+    require(
+        errors,
+        media_provider in {"local", "azure_blob"},
+        "backend: MEDIA_STORAGE_PROVIDER must be local or azure_blob",
+    )
+    require(
+        errors,
+        phone_otp_provider in {"disabled", "acs"},
+        "backend: production PHONE_OTP_PROVIDER must be disabled or acs",
+    )
+
+    if ai_provider in {"azure", "hybrid"}:
         require(
             errors,
-            aws_enabled,
-            "backend: AWS_ENABLED must be true for Bedrock or hybrid AI",
+            azure_enabled,
+            "backend: AZURE_ENABLED must be true for azure or hybrid AI",
+        )
+        require(
+            errors,
+            bool(backend_environment.get("AZURE_OPENAI_ENDPOINT")),
+            "backend: AZURE_OPENAI_ENDPOINT is required for azure AI",
+        )
+        require(
+            errors,
+            bool(backend_environment.get("AZURE_OPENAI_API_KEY")),
+            "backend: AZURE_OPENAI_API_KEY is required for azure AI",
         )
 
     if ai_provider == "local" and fallback_enabled:
         require(
             errors,
-            aws_enabled,
-            "backend: AWS_ENABLED must be true for local-to-Bedrock fallback",
+            azure_enabled,
+            "backend: AZURE_ENABLED must be true for local-to-azure fallback",
+        )
+        require(
+            errors,
+            bool(backend_environment.get("AZURE_OPENAI_ENDPOINT")),
+            "backend: AZURE_OPENAI_ENDPOINT is required for AI fallback",
         )
 
-    if media_provider == "s3":
+    if media_provider == "azure_blob":
         require(
             errors,
-            aws_enabled,
-            "backend: AWS_ENABLED must be true for S3 media",
+            azure_enabled,
+            "backend: AZURE_ENABLED must be true for Blob media storage",
         )
         require(
             errors,
-            bool(backend_environment.get("S3_BUCKET")),
-            "backend: S3_BUCKET is required for S3 media",
+            bool(
+                backend_environment.get(
+                    "AZURE_STORAGE_CONNECTION_STRING"
+                )
+            ),
+            "backend: AZURE_STORAGE_CONNECTION_STRING is required for "
+            "Blob media storage",
+        )
+        require(
+            errors,
+            bool(backend_environment.get("AZURE_STORAGE_CONTAINER")),
+            "backend: AZURE_STORAGE_CONTAINER is required for Blob "
+            "media storage",
         )
 
-    if phone_otp_provider == "sns":
+    if phone_otp_provider == "acs":
         require(
             errors,
-            aws_enabled,
-            "backend: AWS_ENABLED must be true for SNS phone OTP",
+            azure_enabled,
+            "backend: AZURE_ENABLED must be true for ACS phone OTP",
+        )
+        require(
+            errors,
+            bool(backend_environment.get("ACS_CONNECTION_STRING")),
+            "backend: ACS_CONNECTION_STRING is required for ACS phone OTP",
+        )
+        require(
+            errors,
+            bool(backend_environment.get("ACS_SMS_FROM")),
+            "backend: ACS_SMS_FROM is required for ACS phone OTP",
+        )
+
+    if video_indexer_enabled:
+        require(
+            errors,
+            azure_enabled,
+            "backend: AZURE_ENABLED must be true for Video Indexer",
+        )
+        require(
+            errors,
+            bool(
+                backend_environment.get(
+                    "AZURE_VIDEO_INDEXER_ACCOUNT_ID"
+                )
+            ),
+            "backend: AZURE_VIDEO_INDEXER_ACCOUNT_ID is required for "
+            "Video Indexer",
+        )
+        require(
+            errors,
+            bool(backend_environment.get("AZURE_VIDEO_INDEXER_API_KEY")),
+            "backend: AZURE_VIDEO_INDEXER_API_KEY is required for "
+            "Video Indexer",
+        )
+        # Video Indexer downloads the video over the public internet, so
+        # locally stored media at a relative /uploads path is unreachable.
+        require(
+            errors,
+            media_provider == "azure_blob",
+            "backend: AZURE_VIDEO_INDEXER_ENABLED requires "
+            "MEDIA_STORAGE_PROVIDER=azure_blob",
         )
 
     cors_origins = backend_environment.get("CORS_ORIGINS", "")
@@ -373,6 +455,22 @@ def validate_config(
             ),
             "backend: DATABASE_URL cannot contain a placeholder",
         )
+
+        # Azure credentials are copied by hand out of the portal, so a
+        # half-finished .env.production is the likely failure. Only check
+        # the keys that are actually in use; a blank value is already
+        # caught by the per-provider requirements above.
+        if azure_enabled:
+            for variable in AZURE_SECRET_VARIABLES:
+                value = backend_environment.get(variable, "")
+                require(
+                    errors,
+                    not any(
+                        marker in value.lower()
+                        for marker in PLACEHOLDER_MARKERS
+                    ),
+                    f"backend: {variable} cannot contain a placeholder",
+                )
 
     return errors
 

@@ -65,8 +65,8 @@ def test_local_mode_uses_only_local_provider(
     service.local_provider = StubProvider(
         make_result("local", 0.72)
     )
-    service.bedrock_provider = StubProvider(
-        AssertionError("Bedrock should not be called")
+    service.azure_provider = StubProvider(
+        AssertionError("Azure should not be called")
     )
 
     result = service.analyze(analysis_request)
@@ -74,7 +74,7 @@ def test_local_mode_uses_only_local_provider(
     assert result.provider == "local"
     assert result.authenticity_score == pytest.approx(0.72)
     assert service.local_provider.calls == 1
-    assert service.bedrock_provider.calls == 0
+    assert service.azure_provider.calls == 0
 
 
 def test_disabled_fallback_preserves_primary_error(
@@ -88,8 +88,8 @@ def test_disabled_fallback_preserves_primary_error(
     service.local_provider = StubProvider(
         AIProviderError("local unavailable")
     )
-    service.bedrock_provider = StubProvider(
-        make_result("bedrock", 0.80)
+    service.azure_provider = StubProvider(
+        make_result("azure", 0.80)
     )
 
     with pytest.raises(
@@ -98,7 +98,7 @@ def test_disabled_fallback_preserves_primary_error(
     ):
         service.analyze(analysis_request)
 
-    assert service.bedrock_provider.calls == 0
+    assert service.azure_provider.calls == 0
 
 
 def test_enabled_fallback_records_provider_failure(
@@ -112,18 +112,18 @@ def test_enabled_fallback_records_provider_failure(
     service.local_provider = StubProvider(
         AIProviderError("local unavailable")
     )
-    service.bedrock_provider = StubProvider(
-        make_result("bedrock", 0.81)
+    service.azure_provider = StubProvider(
+        make_result("azure", 0.81)
     )
 
     result = service.analyze(analysis_request)
 
-    assert result.provider == "bedrock-fallback"
+    assert result.provider == "azure-fallback"
     assert result.authenticity_score == pytest.approx(0.81)
     assert result.details["fallback"] == {
         "used": True,
         "failed_provider": "local",
-        "fallback_provider": "bedrock",
+        "fallback_provider": "azure",
         "reason": "local unavailable",
     }
 
@@ -138,8 +138,8 @@ def test_hybrid_mode_combines_both_provider_scores(
     service.local_provider = StubProvider(
         make_result("local", 0.64)
     )
-    service.bedrock_provider = StubProvider(
-        make_result("bedrock", 0.82)
+    service.azure_provider = StubProvider(
+        make_result("azure", 0.82)
     )
 
     result = service.analyze(analysis_request)
@@ -153,7 +153,7 @@ def test_hybrid_mode_combines_both_provider_scores(
     assert result.recommended_status == "pending"
     assert result.details["weights"] == {
         "local": 0.45,
-        "bedrock": 0.55,
+        "azure": 0.55,
     }
 
 
@@ -167,8 +167,8 @@ def test_hybrid_mode_can_return_partial_result(
     service.local_provider = StubProvider(
         make_result("local", 0.70)
     )
-    service.bedrock_provider = StubProvider(
-        AIProviderError("AWS disabled")
+    service.azure_provider = StubProvider(
+        AIProviderError("Azure disabled")
     )
 
     result = service.analyze(analysis_request)
@@ -176,7 +176,7 @@ def test_hybrid_mode_can_return_partial_result(
     assert result.provider == "hybrid-partial"
     assert result.authenticity_score == pytest.approx(0.70)
     assert result.details["provider_errors"] == {
-        "bedrock": "AWS disabled"
+        "azure": "Azure disabled"
     }
 
 
@@ -190,8 +190,8 @@ def test_hybrid_mode_fails_when_all_providers_fail(
     service.local_provider = StubProvider(
         AIProviderError("local unavailable")
     )
-    service.bedrock_provider = StubProvider(
-        AIProviderError("AWS unavailable")
+    service.azure_provider = StubProvider(
+        AIProviderError("Azure unavailable")
     )
 
     with pytest.raises(

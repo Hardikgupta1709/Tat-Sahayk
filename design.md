@@ -672,8 +672,8 @@ services:
 
 ### Data Pipeline
 - **ETL Pipeline**: Airflow for data processing
-- **Data Lake**: S3 for raw data storage
-- **Data Warehouse**: BigQuery or Redshift for analytics
+- **Data Lake**: Azure Data Lake Storage for raw data
+- **Data Warehouse**: Azure Synapse Analytics or BigQuery
 - **Real-time Processing**: Kafka Streams or Flink
 
 ### Advanced ML
@@ -685,5 +685,5 @@ services:
 ### Infrastructure
 - **Kubernetes**: Container orchestration
 - **Service Mesh**: Istio for microservices
-- **API Gateway**: Kong or AWS API Gateway
+- **API Gateway**: Kong or Azure API Management
 - **CDN**: CloudFlare for static assets

@@ -6,7 +6,7 @@ from fastapi import HTTPException
 
 from app.api.v1.endpoints import auth
 from app.core.security import get_password_hash, verify_password
-from app.services import aws_services
+from app.services import azure_clients, azure_notifications
 from app.services.phone_otp import (
     OTPDelivery,
     PhoneOTPError,
@@ -316,73 +316,83 @@ def test_expired_otp_is_cleared(monkeypatch):
     assert user.otp_code is None
 
 
-def test_aws_clients_are_lazy_when_disabled(monkeypatch):
+def test_acs_clients_are_lazy_when_disabled(monkeypatch):
     monkeypatch.setattr(
-        aws_services.settings,
-        "AWS_ENABLED",
+        azure_notifications.settings,
+        "AZURE_ENABLED",
         False,
     )
     monkeypatch.setattr(
-        aws_services.boto3,
-        "client",
-        lambda *_args, **_kwargs: pytest.fail(
-            "AWS client should not be created"
-        ),
+        azure_notifications.settings,
+        "ACS_CONNECTION_STRING",
+        "endpoint=https://example.communication.azure.com/;accesskey=k",
+    )
+    monkeypatch.setattr(
+        azure_notifications.settings,
+        "ACS_SMS_FROM",
+        "+18005550100",
+    )
+    monkeypatch.setattr(
+        azure_notifications,
+        "get_sms_client",
+        lambda: pytest.fail("ACS client should not be created"),
     )
 
-    assert not aws_services.send_otp_sms(
+    assert not azure_notifications.send_otp_sms(
         "+919876543210",
         "123456",
     )
 
+    # The factory itself refuses too, so no other caller can slip past.
+    with pytest.raises(azure_clients.AzureServiceError):
+        azure_clients.get_sms_client()
 
-def test_sns_delivery_uses_lazy_configured_client(
+
+def test_acs_delivery_uses_lazy_configured_client(
     monkeypatch,
 ):
     monkeypatch.setattr(
-        aws_services.settings,
-        "AWS_ENABLED",
+        azure_notifications.settings,
+        "AZURE_ENABLED",
         True,
     )
     monkeypatch.setattr(
-        aws_services.settings,
-        "AWS_REGION",
-        "ap-south-1",
+        azure_notifications.settings,
+        "ACS_CONNECTION_STRING",
+        "endpoint=https://example.communication.azure.com/;accesskey=k",
     )
     monkeypatch.setattr(
-        aws_services.settings,
-        "AWS_ACCESS_KEY_ID",
-        None,
-    )
-    monkeypatch.setattr(
-        aws_services.settings,
-        "AWS_SECRET_ACCESS_KEY",
-        None,
+        azure_notifications.settings,
+        "ACS_SMS_FROM",
+        "+18005550100",
     )
     captured = {}
+    builds = []
 
-    class FakeSNS:
-        def publish(self, **kwargs):
+    class FakeSmsResult:
+        successful = True
+
+    class FakeSmsClient:
+        def send(self, **kwargs):
             captured.update(kwargs)
-            return {
-                "ResponseMetadata": {
-                    "HTTPStatusCode": 200,
-                }
-            }
+            return [FakeSmsResult()]
+
+    def build_client():
+        builds.append(True)
+        return FakeSmsClient()
 
     monkeypatch.setattr(
-        aws_services.boto3,
-        "client",
-        lambda name, **kwargs: (
-            captured.update({"name": name, **kwargs})
-            or FakeSNS()
-        ),
+        azure_notifications,
+        "get_sms_client",
+        build_client,
     )
 
-    assert aws_services.send_otp_sms(
+    assert azure_notifications.send_otp_sms(
         "+919876543210",
         "123456",
     )
-    assert captured["name"] == "sns"
-    assert captured["region_name"] == "ap-south-1"
-    assert captured["PhoneNumber"] == "+919876543210"
+    assert builds == [True]
+    assert captured["from_"] == "+18005550100"
+    assert captured["to"] == ["+919876543210"]
+    assert "123456" in captured["message"]
+    assert captured["enable_delivery_report"] is False

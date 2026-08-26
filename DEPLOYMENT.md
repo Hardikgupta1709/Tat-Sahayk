@@ -7,7 +7,9 @@ Compose:
 - FastAPI backend
 - PostgreSQL with PostGIS
 - Local Python ML service
-- Optional AWS Bedrock and S3 integrations
+- Optional Azure integrations: OpenAI analysis, Blob media
+  storage, Communication Services email and SMS, and AI Video
+  Indexer
 
 The production stack is defined in
 `docker-compose.production.yml`. Only the frontend publishes a host
@@ -61,32 +63,33 @@ CORS_ORIGINS=https://your-real-domain.example
 The `.env.production` file is intentionally ignored by Git. Never
 commit it.
 
-## 3. Select AI and media providers
+## 3. Select AI, media and notification providers
 
 ### AI provider modes
 
 | Mode | Required configuration | Runtime behavior |
 | --- | --- | --- |
-| Local only | `AI_PROVIDER=local`, `AI_FALLBACK_ENABLED=false`, `AWS_ENABLED=false` | Every report uses the local ML service. |
-| Local with Bedrock fallback | `AI_PROVIDER=local`, `AI_FALLBACK_ENABLED=true`, `AWS_ENABLED=true` | Local ML is primary; Bedrock runs only if local analysis fails. |
-| Bedrock only | `AI_PROVIDER=bedrock`, `AI_FALLBACK_ENABLED=false`, `AWS_ENABLED=true` | Every report uses Bedrock. |
-| Bedrock with local fallback | `AI_PROVIDER=bedrock`, `AI_FALLBACK_ENABLED=true`, `AWS_ENABLED=true` | Bedrock is primary; local ML runs if Bedrock fails. |
-| Hybrid | `AI_PROVIDER=hybrid`, `AWS_ENABLED=true` | Local ML and Bedrock both run. Available results are combined; one provider may supply a partial result if the other fails. |
+| Local only | `AI_PROVIDER=local`, `AI_FALLBACK_ENABLED=false`, `AZURE_ENABLED=false` | Every report uses the local ML service. |
+| Local with Azure fallback | `AI_PROVIDER=local`, `AI_FALLBACK_ENABLED=true`, `AZURE_ENABLED=true` | Local ML is primary; Azure OpenAI runs only if local analysis fails. |
+| Azure only | `AI_PROVIDER=azure`, `AI_FALLBACK_ENABLED=false`, `AZURE_ENABLED=true` | Every report uses Azure OpenAI. |
+| Azure with local fallback | `AI_PROVIDER=azure`, `AI_FALLBACK_ENABLED=true`, `AZURE_ENABLED=true` | Azure OpenAI is primary; local ML runs if Azure fails. |
+| Hybrid | `AI_PROVIDER=hybrid`, `AZURE_ENABLED=true` | Local ML and Azure OpenAI both run. Available results are combined; one provider may supply a partial result if the other fails. |
 
-For Bedrock-backed modes, configure:
+For Azure-backed modes, configure:
 
 ```dotenv
-AWS_ENABLED=true
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=
-AWS_SECRET_ACCESS_KEY=
-AWS_BEDROCK_MODEL_ID=us.amazon.nova-pro-v1:0
-AWS_BEDROCK_TEXT_MODEL_ID=us.amazon.nova-micro-v1:0
+AZURE_ENABLED=true
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_KEY=
+AZURE_OPENAI_API_VERSION=2024-10-21
+AZURE_OPENAI_VISION_DEPLOYMENT=analysis
+AZURE_OPENAI_TEXT_DEPLOYMENT=analysis
 ```
 
-Use credentials supplied securely to the deployment environment.
-When deploying on AWS, prefer a narrowly scoped IAM role over
-long-lived access keys.
+The two deployment settings hold the **deployment name** created on the
+Azure OpenAI resource, not the model name. A single `gpt-4o-mini`
+deployment can serve both. Supply the key securely to the deployment
+environment; it is a secret on the same footing as `SECRET_KEY`.
 
 ### Media storage modes
 
@@ -99,19 +102,84 @@ MEDIA_STORAGE_PROVIDER=local
 Uploads persist in the `uploads_data` named volume and are served
 through Nginx at `/uploads`.
 
-For S3:
+For Azure Blob Storage:
 
 ```dotenv
-MEDIA_STORAGE_PROVIDER=s3
-AWS_ENABLED=true
-AWS_REGION=us-east-1
-S3_BUCKET=your-report-media-bucket
+MEDIA_STORAGE_PROVIDER=azure_blob
+AZURE_ENABLED=true
+AZURE_STORAGE_CONNECTION_STRING=
+AZURE_STORAGE_ACCOUNT=yourstorageaccount
+AZURE_STORAGE_CONTAINER=report-media
 ```
 
-The current prototype returns direct S3 object URLs. The bucket or
-an attached CDN must therefore permit the intended users to read
-those objects. Use a dedicated bucket and a least-privilege write
-policy for the application.
+The prototype returns direct blob URLs, so anonymous read must be
+permitted at **both** the storage account (`allowBlobPublicAccess`) and
+the container (`--public-access blob`) — anonymous access is off by
+default at each level, and opening only one produces 404s with no other
+symptom. Anyone holding the URL can then read the object. Use a
+dedicated container for report media. The connection string carries an
+account key; treat it as a secret.
+
+### Video analysis
+
+Video scoring is off by default and billed per input minute:
+
+```dotenv
+AZURE_VIDEO_INDEXER_ENABLED=true
+AZURE_VIDEO_INDEXER_ACCOUNT_ID=
+AZURE_VIDEO_INDEXER_LOCATION=
+AZURE_VIDEO_INDEXER_API_KEY=
+AZURE_VIDEO_INDEXER_TIMEOUT_SECONDS=300
+AZURE_VIDEO_INDEXER_INDEXING_PRESET=VideoOnly
+AZURE_VIDEO_INDEXER_STREAMING_PRESET=NoStreaming
+```
+
+Video Indexer fetches the video over the public internet by URL, so it
+cannot read locally stored media at a relative `/uploads` path. The
+policy check therefore requires `MEDIA_STORAGE_PROVIDER=azure_blob`
+whenever this is enabled. Note also that a Video Indexer *trial* account
+has no API access at all, and that `MEDIA_ALLOWED_CONTENT_TYPES` allows
+only image types by default, so video upload has to be enabled
+separately before any of this is reachable.
+
+With the flag off, reports carrying video fall back to context-only
+scoring and no request is made.
+
+### Notifications and phone OTP
+
+Disaster alert emails go through Azure Communication Services:
+
+```dotenv
+AZURE_ENABLED=true
+ACS_CONNECTION_STRING=
+ACS_SENDER_EMAIL=DoNotReply@your-domain
+ACS_EMAIL_RECIPIENTS_PER_MESSAGE=50
+ACS_EMAIL_MAX_MESSAGES_PER_ALERT=2
+```
+
+Recipients are batched into one message per chunk of
+`ACS_EMAIL_RECIPIENTS_PER_MESSAGE` (50 is the ACS maximum), addressed in
+**BCC** so no recipient sees another's address, and capped at
+`ACS_EMAIL_MAX_MESSAGES_PER_ALERT` messages per alert. Addresses past
+the cap are skipped and the count logged.
+
+The batching and the cap exist because an **Azure-managed sender domain
+is limited to 5 emails per minute and 10 per hour, and that limit cannot
+be raised.** Only a custom domain you verify yourself reaches the
+raisable 30/minute, 100/hour tier. Leave the defaults alone unless you
+have moved to a custom domain.
+
+For phone OTP, `PHONE_OTP_PROVIDER` accepts `disabled` or `acs` in
+production; `console` is rejected. ACS requires a sending number:
+
+```dotenv
+PHONE_OTP_PROVIDER=acs
+ACS_CONNECTION_STRING=
+ACS_SMS_FROM=+15551234567
+```
+
+ACS does not sell phone numbers for India, so an Indian subscription
+cannot deliver SMS OTP at all and must leave this `disabled`.
 
 ### Google authentication
 
@@ -232,7 +300,7 @@ docker compose \
   sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
 ```
 
-When `AI_PROVIDER=bedrock`, backend readiness deliberately skips the
+When `AI_PROVIDER=azure`, backend readiness deliberately skips the
 local ML dependency check. The ML container still remains available
 for a later switch to local or hybrid mode.
 
@@ -278,20 +346,40 @@ convert or update an existing account, repeat the command with
 
 ## 8. TLS and network exposure
 
-The Compose stack serves HTTP on `FRONTEND_PORT`, which defaults to
-`8080`. For internet access:
+The Compose stack serves HTTP on `FRONTEND_PORT`, which defaults to `8080`.
+That port is bound to `FRONTEND_BIND_HOST`, which defaults to `127.0.0.1`, so
+by default the application is reachable only from the host itself and a
+TLS-terminating proxy must sit in front of it.
 
-1. Put a TLS-terminating reverse proxy or cloud load balancer in
-   front of port 8080.
+For internet access:
+
+1. Put a TLS-terminating reverse proxy or cloud load balancer on the host,
+   forwarding to `127.0.0.1:8080`.
 2. Serve the public site only over HTTPS.
-3. Restrict direct access to port 8080 with the host or cloud
-   firewall.
-4. Keep ports 5432, 5001, and 8000 private.
+3. Leave `FRONTEND_BIND_HOST` at `127.0.0.1`. Set it to `0.0.0.0` only for
+   local testing or when an external load balancer fronts the host — note
+   that Docker's iptables rules mean a port published on `0.0.0.0` can be
+   reachable from the internet even when a host firewall such as `ufw` is
+   enabled.
+4. Keep ports 5432, 5001, and 8000 private. They are never published.
 5. Set `CORS_ORIGINS` to the final HTTPS origin.
 
-TLS certificate management is intentionally outside this Compose
-file so the same application stack can sit behind Caddy, Nginx, an
-AWS Application Load Balancer, or another ingress layer.
+HTTPS is required rather than optional. The frontend requests browser
+geolocation when creating a report, and browsers deny geolocation to
+non-HTTPS origins; Google sign-in likewise requires an HTTPS origin; and the
+client selects `wss://` for its real-time socket only when the page is served
+over HTTPS.
+
+TLS certificate management is intentionally outside this Compose file so the
+same application stack can sit behind Caddy, Nginx, a cloud load
+balancer, or another ingress layer. `scripts/validate_production_compose.py`
+enforces that the production stack contains exactly the four application
+services, so a proxy belongs on the host rather than in this file.
+
+A ready-to-use Caddy configuration with automatic Let's Encrypt certificates
+is provided in [`deploy/Caddyfile`](deploy/Caddyfile). For a complete
+provider walkthrough that uses it, see
+[DEPLOY-AZURE.md](DEPLOY-AZURE.md).
 
 ## 9. Routine operations
 
@@ -365,8 +453,10 @@ docker compose \
 ```
 
 Store backups away from the application host and test restoration
-regularly. For S3 media, enable bucket versioning and a suitable
-lifecycle or replication policy.
+regularly. For Azure Blob media, enable blob versioning or soft
+delete on the container so an overwritten or deleted object is
+recoverable — the `uploads_data` backup above covers only locally
+stored media.
 
 ### Database restoration
 
@@ -515,14 +605,19 @@ docker compose \
   logs --tail=200 ml-service
 ```
 
-### Bedrock analysis fails
+### Azure analysis fails
 
-Confirm `AWS_ENABLED=true`, the region and model IDs are correct,
-and the supplied IAM identity can invoke the configured Bedrock
-models.
+Confirm `AZURE_ENABLED=true` and that `AZURE_OPENAI_ENDPOINT` and
+`AZURE_OPENAI_API_KEY` come from the same resource. A 404
+`DeploymentNotFound` means `AZURE_OPENAI_VISION_DEPLOYMENT` or
+`AZURE_OPENAI_TEXT_DEPLOYMENT` holds a model name where a
+deployment name belongs.
 
 ### Uploaded media is unavailable
 
 For local storage, confirm the `uploads_data` volume is mounted and
-the backend can write to `/app/uploads`. For S3, confirm bucket
-permissions, region, and object-read behavior.
+the backend can write to `/app/uploads`. For Azure Blob, a saved
+report whose image 404s in the browser means the upload credential
+is fine but anonymous read is closed: check `allowBlobPublicAccess`
+on the account and `publicAccess` on the container, both of which
+must be open.

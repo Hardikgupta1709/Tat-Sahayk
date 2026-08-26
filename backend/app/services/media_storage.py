@@ -3,8 +3,6 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
 
-import boto3
-
 from app.core.config import settings
 
 
@@ -75,49 +73,67 @@ class LocalMediaStorage:
         return f"{self.public_url}/{object_name}"
 
 
-class S3MediaStorage:
+class _FallbackContentSettings:
+    """Stand-in for the SDK's ``ContentSettings``.
+
+    Only reachable with an injected client, since a real Blob client
+    cannot exist without the SDK installed. Keeps the content type on
+    the upload call either way.
+    """
+
+    def __init__(self, content_type: str) -> None:
+        self.content_type = content_type
+
+
+def _content_settings(content_type: str) -> Any:
+    try:
+        from azure.storage.blob import ContentSettings
+    except ImportError:
+        return _FallbackContentSettings(content_type)
+
+    return ContentSettings(content_type=content_type)
+
+
+class AzureBlobMediaStorage:
     def __init__(
         self,
-        bucket: str,
-        region: str,
-        access_key_id: str | None = None,
-        secret_access_key: str | None = None,
+        container: str,
+        connection_string: str | None = None,
+        account: str | None = None,
         client: Any = None,
     ) -> None:
-        if not bucket:
+        if not container:
             raise MediaStorageError(
-                "S3_BUCKET is required for S3 media storage"
+                "AZURE_STORAGE_CONTAINER is required for "
+                "Azure Blob media storage"
             )
 
-        self.bucket = bucket
-        self.region = region
+        self.container = container
+        self.account = account
 
         if client is not None:
             self.client = client
             return
 
-        client_options: dict[str, Any] = {
-            "region_name": region,
-        }
-
-        if access_key_id and secret_access_key:
-            client_options.update(
-                {
-                    "aws_access_key_id": access_key_id,
-                    "aws_secret_access_key": (
-                        secret_access_key
-                    ),
-                }
+        if not connection_string:
+            raise MediaStorageError(
+                "AZURE_STORAGE_CONNECTION_STRING is required "
+                "for Azure Blob media storage"
             )
 
         try:
-            self.client = boto3.client(
-                "s3",
-                **client_options,
+            # Imported lazily so local storage never loads the
+            # Azure SDK.
+            from azure.storage.blob import BlobServiceClient
+
+            self.client = (
+                BlobServiceClient.from_connection_string(
+                    connection_string
+                )
             )
         except Exception as exc:
             raise MediaStorageError(
-                "Unable to initialize S3 media storage"
+                "Unable to initialize Azure Blob media storage"
             ) from exc
 
     def save(
@@ -129,23 +145,31 @@ class S3MediaStorage:
         del filename
 
         object_name = build_object_name(content_type)
-        object_key = f"reports/{object_name}"
+        blob_name = f"reports/{object_name}"
 
         try:
-            self.client.put_object(
-                Bucket=self.bucket,
-                Key=object_key,
-                Body=file_bytes,
-                ContentType=content_type,
+            blob_client = self.client.get_blob_client(
+                container=self.container,
+                blob=blob_name,
+            )
+            blob_client.upload_blob(
+                file_bytes,
+                overwrite=False,
+                content_settings=_content_settings(content_type),
             )
         except Exception as exc:
             raise MediaStorageError(
-                "Unable to upload media to S3"
+                "Unable to upload media to Azure Blob Storage"
             ) from exc
 
+        url = getattr(blob_client, "url", None)
+
+        if url:
+            return url
+
         return (
-            f"https://{self.bucket}.s3."
-            f"{self.region}.amazonaws.com/{object_key}"
+            f"https://{self.account}.blob.core.windows.net/"
+            f"{self.container}/{blob_name}"
         )
 
 
@@ -157,9 +181,10 @@ def get_media_storage() -> MediaStorage:
             public_url=settings.local_media_url,
         )
 
-    return S3MediaStorage(
-        bucket=settings.S3_BUCKET or "",
-        region=settings.AWS_REGION,
-        access_key_id=settings.AWS_ACCESS_KEY_ID,
-        secret_access_key=settings.AWS_SECRET_ACCESS_KEY,
+    return AzureBlobMediaStorage(
+        container=settings.AZURE_STORAGE_CONTAINER,
+        connection_string=(
+            settings.AZURE_STORAGE_CONNECTION_STRING
+        ),
+        account=settings.AZURE_STORAGE_ACCOUNT,
     )

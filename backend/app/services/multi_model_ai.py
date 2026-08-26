@@ -1,34 +1,42 @@
 """
 Multi-Model AI Analysis System
-Uses different AI models for specialized tasks:
-- Amazon Rekognition: Image authenticity, deepfake detection, scene analysis
-- Amazon Bedrock (Claude): Text analysis, context understanding, summary generation
-- Amazon Bedrock (Nova): Video analysis, temporal consistency
+Uses different specialized checks for report analysis:
+- Azure OpenAI vision: Image authenticity, manipulation cues, scene
+  consistency with the reported hazard
+- Azure OpenAI text: Description coherence, spam detection, summary
+  generation
+- Geographic and temporal heuristics: Location plausibility, report
+  timing consistency
 - Tavily/Web Search: Real-time news verification, location context
+
+Three of these run against the same Azure OpenAI deployment; only the
+prompt differs.
 """
 
 import logging
-import boto3
 import json
 import requests
 from datetime import datetime
 from typing import Dict, List, Any
 from app.core.config import settings
+from app.services.azure_clients import get_openai_client
 
 logger = logging.getLogger(__name__)
 
-# Initialize AWS clients
-rekognition = boto3.client('rekognition', region_name=settings.AWS_REGION)
-bedrock_runtime = boto3.client('bedrock-runtime', region_name=settings.AWS_REGION)
-
 
 class MultiModelAnalyzer:
-    """Orchestrates multiple AI models for comprehensive report analysis"""
-    
-    def __init__(self):
-        self.rekognition = rekognition
-        self.bedrock = bedrock_runtime
-    
+    """Orchestrates multiple AI checks for comprehensive report analysis"""
+
+    @property
+    def client(self):
+        """Azure OpenAI client, built on first use.
+
+        Raises AzureServiceError when Azure is disabled; every caller
+        below catches it and degrades to a neutral score.
+        """
+        return get_openai_client()
+
+
     async def analyze_cluster(self, cluster_data: Dict) -> Dict[str, Any]:
         """
         Comprehensive multi-model analysis of a report cluster
@@ -72,7 +80,7 @@ class MultiModelAnalyzer:
                 text_score * weights["text"]
             )
             
-            # Generate comprehensive summary using Claude
+            # Generate comprehensive summary using Azure OpenAI
             summary = await self._generate_summary(
                 cluster_data, 
                 final_score,
@@ -112,21 +120,20 @@ class MultiModelAnalyzer:
     
     async def _analyze_images(self, cluster_data: Dict) -> float:
         """
-        Use Amazon Rekognition to analyze image authenticity
-        - Detect AI-generated images
-        - Check for image manipulation
+        Use Azure OpenAI vision to analyze image authenticity
+        - Detect AI-generated or manipulated images
         - Verify scene consistency with reported hazard
-        - Detect deepfakes in videos
+        - Flag content unrelated to the reported disaster
         """
         try:
             reports_with_images = [r for r in cluster_data["reports"] if r.get("has_image") and r.get("image_url")]
-            
+
             if not reports_with_images:
                 return 0.5  # Neutral score if no images
-            
+
             scores = []
             hazard_type = cluster_data["hazard_type"].lower()
-            
+
             # Expected labels for each hazard type
             hazard_labels = {
                 "flood": ["water", "flood", "rain", "storm", "damage", "debris", "building", "road"],
@@ -136,83 +143,127 @@ class MultiModelAnalyzer:
                 "fire": ["fire", "smoke", "flame", "burning", "damage", "destruction"],
                 "oil spill": ["water", "oil", "pollution", "ocean", "coast", "beach", "contamination"],
             }
-            
+
             expected_labels = hazard_labels.get(hazard_type, ["damage", "disaster"])
-            
+
             for report in reports_with_images:
                 try:
                     image_url = report.get("image_url", "")
-                    
-                    # If S3 URL, use it directly; otherwise skip
+
+                    # Video Indexer and blob URLs are absolute; a
+                    # relative local-storage path cannot be fetched.
                     if not image_url or not image_url.startswith("http"):
                         scores.append(0.5)
                         continue
-                    
-                    # Use Rekognition to detect labels in the image
-                    # Note: For S3 images, use S3Object parameter; for URLs, download first
-                    response = self.rekognition.detect_labels(
-                        Image={'S3Object': {'Bucket': settings.S3_BUCKET, 'Name': image_url.split('/')[-1]}} 
-                        if 's3.amazonaws.com' in image_url else
-                        {'Bytes': self._download_image(image_url)},
-                        MaxLabels=20,
-                        MinConfidence=60
+
+                    scores.append(
+                        self._assess_image(
+                            image_url,
+                            hazard_type,
+                            expected_labels,
+                        )
                     )
-                    
-                    detected_labels = [label['Name'].lower() for label in response['Labels']]
-                    
-                    # Check for scene consistency
-                    matches = sum(1 for label in expected_labels if any(label in dl for dl in detected_labels))
-                    consistency_score = min(matches / len(expected_labels), 1.0)
-                    
-                    # Use Rekognition moderation to detect inappropriate/fake content
-                    moderation = self.rekognition.detect_moderation_labels(
-                        Image={'S3Object': {'Bucket': settings.S3_BUCKET, 'Name': image_url.split('/')[-1]}}
-                        if 's3.amazonaws.com' in image_url else
-                        {'Bytes': self._download_image(image_url)},
-                        MinConfidence=60
-                    )
-                    
-                    # Lower score if moderation flags found
-                    moderation_penalty = len(moderation['ModerationLabels']) * 0.1
-                    
-                    # Image quality check
-                    quality_response = self.rekognition.detect_faces(
-                        Image={'S3Object': {'Bucket': settings.S3_BUCKET, 'Name': image_url.split('/')[-1]}}
-                        if 's3.amazonaws.com' in image_url else
-                        {'Bytes': self._download_image(image_url)}
-                    )
-                    
-                    # If faces detected with high quality, likely authentic photo
-                    quality_bonus = 0.1 if quality_response.get('FaceDetails') else 0
-                    
-                    image_score = max(0.0, min(1.0, consistency_score - moderation_penalty + quality_bonus))
-                    scores.append(image_score)
-                    
+
                 except Exception as img_error:
                     logger.warning(f"Failed to analyze individual image: {img_error}")
                     scores.append(0.5)  # Neutral if analysis fails
-            
+
             # Bonus for multiple corroborating images
             if len(scores) >= 2:
                 avg_score = sum(scores) / len(scores)
                 return min(1.0, avg_score * 1.1)  # 10% bonus for multiple images
-            
+
             return sum(scores) / len(scores) if scores else 0.5
-            
+
         except Exception as e:
             logger.error(f"Image analysis failed: {e}")
             return 0.5
-    
-    def _download_image(self, url: str) -> bytes:
-        """Download image from URL for Rekognition analysis"""
+
+    def _assess_image(
+        self,
+        image_url: str,
+        hazard_type: str,
+        expected_labels: List[str],
+    ) -> float:
+        """Score one image with a single Azure OpenAI vision call.
+
+        One request returns both a scene-consistency score and a
+        manipulation flag, so labelling, moderation and relevance are
+        all judged together.
+        """
+        from app.services.azure_ai import (
+            IMAGE_MIME_TYPES,
+            fetch_media_base64,
+        )
+
+        b64_data, media_format = fetch_media_base64(image_url)
+
+        if not b64_data:
+            return 0.5
+
+        mime_type = IMAGE_MIME_TYPES.get(media_format)
+
+        if mime_type is None:
+            # Video in a cluster image slot: nothing to assess here.
+            return 0.5
+
+        prompt = (
+            "You are verifying a citizen disaster report photo.\n\n"
+            f"Reported hazard: {hazard_type}\n"
+            "Expected visual elements: "
+            f"{', '.join(expected_labels)}\n\n"
+            "Respond ONLY with this JSON object:\n"
+            '{"scene_consistency": 0.0, "is_manipulated": false, '
+            '"is_unrelated": false}\n\n'
+            "scene_consistency is 0.0-1.0 for how well the image "
+            "matches the expected elements. Set is_manipulated true "
+            "for AI-generation artifacts or edited content. Set "
+            "is_unrelated true when the image shows no disaster at "
+            "all (selfie, food, screenshot, document)."
+        )
+
+        response = self.client.chat.completions.create(
+            model=settings.AZURE_OPENAI_VISION_DEPLOYMENT,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {
+                                "url": (
+                                    f"data:{mime_type};base64,"
+                                    f"{b64_data}"
+                                ),
+                            },
+                        },
+                    ],
+                }
+            ],
+            max_tokens=200,
+            temperature=0.1,
+            response_format={"type": "json_object"},
+        )
+
+        parsed = json.loads(
+            (response.choices[0].message.content or "").strip()
+        )
+
         try:
-            response = requests.get(url, timeout=10)
-            response.raise_for_status()
-            return response.content
-        except Exception as e:
-            logger.error(f"Failed to download image: {e}")
-            raise
-    
+            consistency = float(parsed.get("scene_consistency", 0.5))
+        except (TypeError, ValueError):
+            consistency = 0.5
+
+        if parsed.get("is_unrelated"):
+            return 0.05
+
+        # Mirrors the old moderation penalty, but keyed on a direct
+        # manipulation judgement instead of a moderation label count.
+        penalty = 0.35 if parsed.get("is_manipulated") else 0.0
+
+        return max(0.0, min(1.0, consistency - penalty))
+
     async def _verify_location_context(self, cluster_data: Dict) -> float:
         """
         Verify location makes sense for the reported hazard
@@ -402,18 +453,17 @@ class MultiModelAnalyzer:
     
     async def _analyze_text_coherence(self, cluster_data: Dict) -> float:
         """
-        Use Claude to analyze text descriptions for coherence
+        Use Azure OpenAI to analyze text descriptions for coherence
         - Check if descriptions are realistic
         - Detect spam/bot-like patterns
         - Verify language consistency
         """
         try:
             descriptions = [r.get("description", "") for r in cluster_data["reports"]]
-            
+
             if not descriptions or all(not d for d in descriptions):
                 return 0.4  # Low score for missing descriptions
-            
-            # Use Claude for text analysis
+
             prompt = f"""Analyze these disaster report descriptions for authenticity:
 
 Reports: {json.dumps(descriptions, indent=2)}
@@ -424,37 +474,35 @@ Evaluate:
 3. Is language natural vs bot-generated?
 4. Do multiple reports corroborate each other?
 
-Respond with only a score from 0.0 to 1.0 indicating authenticity."""
+Respond ONLY with this JSON object, where score is 0.0 to 1.0 \
+indicating authenticity: {{"score": 0.0}}"""
 
-            response = self.bedrock.invoke_model(
-                modelId="anthropic.claude-3-haiku-20240307-v1:0",
-                body=json.dumps({
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "messages": [{
-                        "role": "user",
-                        "content": prompt
-                    }],
-                    "max_tokens": 100
-                })
+            response = self.client.chat.completions.create(
+                model=settings.AZURE_OPENAI_TEXT_DEPLOYMENT,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=100,
+                temperature=0.2,
+                response_format={"type": "json_object"},
             )
-            
-            result = json.loads(response['body'].read())
-            score_text = result['content'][0]['text'].strip()
-            
+
+            parsed = json.loads(
+                (response.choices[0].message.content or "").strip()
+            )
+
             # Extract score
             try:
-                score = float(score_text)
+                score = float(parsed.get("score"))
                 return max(0.0, min(1.0, score))
-            except:
+            except (TypeError, ValueError):
                 return 0.65  # Default if parsing fails
-                
+
         except Exception as e:
             logger.error(f"Text coherence analysis failed: {e}")
             return 0.65
-    
+
     async def _generate_summary(self, cluster_data: Dict, final_score: float, breakdown: Dict) -> str:
         """
-        Use Claude to generate comprehensive summary
+        Use Azure OpenAI to generate comprehensive summary
         """
         try:
             prompt = f"""You are an AI disaster analyst. Summarize this cluster analysis:
@@ -475,25 +523,19 @@ Overall Authenticity: {final_score:.0%}
 
 Provide a 2-3 sentence summary for emergency responders. Be concise and actionable."""
 
-            response = self.bedrock.invoke_model(
-                modelId="anthropic.claude-3-sonnet-20240229-v1:0",
-                body=json.dumps({
-                    "anthropic_version": "bedrock-2023-05-31",
-                    "messages": [{
-                        "role": "user",
-                        "content": prompt
-                    }],
-                    "max_tokens": 200
-                })
+            response = self.client.chat.completions.create(
+                model=settings.AZURE_OPENAI_TEXT_DEPLOYMENT,
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=200,
+                temperature=0.3,
             )
-            
-            result = json.loads(response['body'].read())
-            return result['content'][0]['text'].strip()
-            
+
+            return (response.choices[0].message.content or "").strip()
+
         except Exception as e:
             logger.error(f"Summary generation failed: {e}")
             return f"Cluster of {cluster_data.get('report_count', 0)} {cluster_data['hazard_type']} reports. Authenticity score: {final_score:.0%}. Recommend verification."
-    
+
     def _determine_severity(self, cluster_data: Dict, authenticity_score: float) -> str:
         """Determine severity based on reports and authenticity"""
         reports = cluster_data["reports"]

@@ -6,9 +6,11 @@ nearby activity, and confirm reports. Administrators can verify reports,
 publish alerts, and manage response resources from map and dashboard
 views.
 
-The project is local-first: it runs with the included Python ML service
-without requiring AWS. Bedrock and S3 can be enabled independently when
-cloud-backed analysis or media storage is needed.
+The project is local-first: it runs entirely on the included Python ML
+service with no cloud account at all. A set of Azure services — OpenAI
+analysis, Blob media storage, Communication Services email and SMS, and
+AI Video Indexer — can each be enabled independently when hosted
+analysis, media storage, or notifications are wanted.
 
 > Tat-Sahayk is a prototype and decision-support tool. Automated scores
 > require human review and must not be treated as an official emergency
@@ -25,8 +27,10 @@ cloud-backed analysis or media storage is needed.
 - Interactive Leaflet map with reports, hotspots, shelters, response
   deployments, forces, and annotations
 - Administrator verification workflow and dashboard
-- Local, Bedrock, and hybrid AI analysis modes
-- Configurable local-volume or S3 media storage
+- Local, Azure OpenAI, and hybrid AI analysis modes
+- Configurable local-volume or Azure Blob media storage
+- Optional batched disaster-alert email and SMS OTP via Azure
+  Communication Services
 - PostgreSQL/PostGIS persistence with versioned Alembic migrations
 - Health/readiness endpoints for all containerized services
 - Development and production Docker Compose configurations
@@ -42,17 +46,19 @@ flowchart LR
     Backend["FastAPI backend"]
     Database[("PostgreSQL<br/>PostGIS")]
     LocalML["Python ML service"]
-    Bedrock["AWS Bedrock<br/>(optional)"]
+    AzureAI["Azure OpenAI<br/>(optional)"]
     LocalMedia[("Local media volume")]
-    S3["Amazon S3<br/>(optional)"]
+    Blob["Azure Blob Storage<br/>(optional)"]
+    ACS["Azure Communication<br/>Services (optional)"]
 
     Browser --> Frontend
     Frontend -->|"/api and /uploads"| Backend
     Backend --> Database
     Backend --> LocalML
-    Backend -.-> Bedrock
+    Backend -.-> AzureAI
     Backend --> LocalMedia
-    Backend -.-> S3
+    Backend -.-> Blob
+    Backend -.-> ACS
 ```
 
 Development Compose publishes all four services for inspection.
@@ -67,15 +73,15 @@ file:
 | Configuration | Behavior |
 | --- | --- |
 | `local`, fallback disabled | Use only the included ML service. |
-| `local`, fallback enabled | Use local ML first and Bedrock if local analysis fails. |
-| `bedrock`, fallback disabled | Use only Bedrock. |
-| `bedrock`, fallback enabled | Use Bedrock first and local ML if Bedrock fails. |
+| `local`, fallback enabled | Use local ML first and Azure OpenAI if local analysis fails. |
+| `azure`, fallback disabled | Use only Azure OpenAI. |
+| `azure`, fallback enabled | Use Azure OpenAI first and local ML if Azure fails. |
 | `hybrid` | Run both providers and combine available results. |
 
-Bedrock-backed modes require `AWS_ENABLED=true` and suitable AWS
-credentials or an IAM role. Hybrid scoring currently weights local ML
-at 45% and Bedrock at 55%. If only one hybrid provider is available,
-the result is explicitly marked as partial.
+Azure-backed modes require `AZURE_ENABLED=true` plus an Azure OpenAI
+endpoint, key, and deployment name. Hybrid scoring currently weights
+local ML at 45% and Azure at 55%. If only one hybrid provider is
+available, the result is explicitly marked as partial.
 
 The local analysis service includes:
 
@@ -99,7 +105,7 @@ this repository.
 | Backend | Python 3.11, FastAPI, SQLAlchemy 2, Alembic, Pydantic 2, JWT authentication, APScheduler |
 | Data | PostgreSQL 16 with PostGIS |
 | Local ML | Python 3.10, PyTorch, Transformers/CLIP, spaCy, NLTK/VADER, pandas, scikit-learn |
-| Optional AWS | Bedrock analysis and S3 media storage |
+| Optional Azure | OpenAI analysis, Blob media storage, Communication Services email/SMS, AI Video Indexer |
 | Operations | Docker Compose, Nginx, GitHub Actions |
 
 ## Quick start with Docker
@@ -188,7 +194,9 @@ It refuses to change an existing account unless
 `--update-existing` is supplied explicitly.
 
 Production provisioning commands and operational guidance are in
-[DEPLOYMENT.md](DEPLOYMENT.md).
+[DEPLOYMENT.md](DEPLOYMENT.md). For a concrete host, provider setup,
+TLS, and the Azure service walkthrough, see
+[DEPLOY-AZURE.md](DEPLOY-AZURE.md).
 
 ## Configuration
 
@@ -204,19 +212,23 @@ Important settings:
 | `SECRET_KEY` | JWT signing secret |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | Development Compose database |
 | `DATABASE_URL` | Production backend database connection |
-| `AI_PROVIDER` | `local`, `bedrock`, or `hybrid` |
-| `AI_FALLBACK_ENABLED` | Enables fallback for `local` or `bedrock` primary mode |
-| `AWS_ENABLED`, `AWS_REGION` | Enables AWS-backed features |
-| `AWS_BEDROCK_MODEL_ID` | Bedrock multimodal model |
-| `MEDIA_STORAGE_PROVIDER` | `local` or `s3` |
-| `S3_BUCKET` | Required for S3 media storage |
+| `AI_PROVIDER` | `local`, `azure`, or `hybrid` |
+| `AI_FALLBACK_ENABLED` | Enables fallback for `local` or `azure` primary mode |
+| `AZURE_ENABLED` | Master switch for every Azure-backed feature |
+| `AZURE_OPENAI_ENDPOINT`, `AZURE_OPENAI_API_KEY` | Azure OpenAI credentials |
+| `AZURE_OPENAI_VISION_DEPLOYMENT`, `AZURE_OPENAI_TEXT_DEPLOYMENT` | Deployment names, not model names |
+| `MEDIA_STORAGE_PROVIDER` | `local` or `azure_blob` |
+| `AZURE_STORAGE_CONNECTION_STRING`, `AZURE_STORAGE_CONTAINER` | Required for Azure Blob media storage |
+| `ACS_CONNECTION_STRING`, `ACS_SENDER_EMAIL` | Azure Communication Services alert email |
+| `PHONE_OTP_PROVIDER`, `ACS_SMS_FROM` | `disabled` or `acs` SMS OTP delivery |
+| `AZURE_VIDEO_INDEXER_ENABLED` | Optional video analysis, billed per input minute |
 | `GOOGLE_CLIENT_ID` | Google OAuth web client ID |
 | `MEDIA_MAX_FILE_SIZE_MB` | Per-file upload limit |
 | `ENABLE_SOCIAL_HARVESTER` | Enables the optional scheduled feed harvester |
 | `ENABLE_CLUSTER_ANALYSIS` | Enables optional scheduled cluster analysis |
 
 Local development works with the default local provider and does not
-require AWS credentials.
+require any Azure credentials.
 
 Do not commit `.env`, `.env.production`, access keys, OAuth secrets, or
 real production credentials.
@@ -368,7 +380,8 @@ Tat-Sahayk/
 │   └── validate_production_compose.py
 ├── docker-compose.yml
 ├── docker-compose.production.yml
-└── DEPLOYMENT.md
+├── DEPLOYMENT.md
+└── DEPLOY-AZURE.md
 ```
 
 ## Prototype boundaries
@@ -379,8 +392,9 @@ Tat-Sahayk/
   patterns rather than a trained transformer classifier.
 - Image classification downloads and runs the CLIP model and may be
   resource intensive on CPU-only hosts.
-- External weather, ocean-data, OAuth, notification, Bedrock, and S3
-  behavior depends on separately configured provider credentials.
+- External weather, ocean-data, OAuth, and Azure OpenAI, Blob,
+  Communication Services, and Video Indexer behavior depends on
+  separately configured provider credentials.
 - Production TLS termination, monitoring, and off-host backup storage
   are infrastructure responsibilities outside the application Compose
   file.
