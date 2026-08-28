@@ -26,50 +26,54 @@ RSS_FEEDS = [
     {"url": "https://news.google.com/rss/search?q=oil+spill+india+coast+when:1d&hl=en-IN&gl=IN&ceid=IN:en", "source": "Google News"},
     # Google News: "Earthquake India" (Last 24 hours)
     {"url": "https://news.google.com/rss/search?q=earthquake+india+when:1d&hl=en-IN&gl=IN&ceid=IN:en", "source": "Google News"},
+    {"url": "https://news.google.com/rss/search?q=IMD+cyclone+warning+india+when:1d&hl=en-IN&gl=IN&ceid=IN:en", "source": "Google News"},
+    {"url": "https://news.google.com/rss/search?q=NDRF+rescue+coastal+india+when:1d&hl=en-IN&gl=IN&ceid=IN:en", "source": "Google News"},
+    {"url": "https://news.google.com/rss/search?q=INCOIS+warning+bay+bengal+when:1d&hl=en-IN&gl=IN&ceid=IN:en", "source": "Google News"},
+    {"url": "https://news.google.com/rss/search?q=coastal+disaster+india+when:1d&hl=en-IN&gl=IN&ceid=IN:en", "source": "Google News"},
     # GDACS (Global Disaster Alert System) - Real-time official alerts
     {"url": "https://www.gdacs.org/xml/rss.xml", "source": "GDACS"}
 ]
 
-# Keywords to filter out irrelevant news
-EXCLUDE_KEYWORDS = [
-    'cricket', 'football', 'politics', 'election', 'minister', 'parliament',
-    'africa', 'europe', 'america', 'china', 'pakistan', 'bangladesh',
-    'movie', 'film', 'actor', 'actress', 'celebrity', 'entertainment',
-    'stock', 'market', 'economy', 'business', 'company', 'startup',
-    'forest fire', 'wildfire', 'bushfire'  # Exclude forest fires unless in India
-]
+BOOST_KEYWORDS = {
+    # Indian disaster agencies (high value)
+    'imd': 3, 'ndrf': 3, 'incois': 3, 'sdrf': 3, 'coast guard': 3, 'ndma': 3,
+    'india meteorological': 3, 'national disaster': 3,
+    # Indian coastal states (medium value)
+    'kerala': 2, 'odisha': 2, 'tamil nadu': 2, 'gujarat': 2,
+    'west bengal': 2, 'andhra pradesh': 2, 'maharashtra': 2, 'goa': 2,
+    'karnataka': 2, 'bay of bengal': 2, 'arabian sea': 2, 'indian ocean': 2,
+    'lakshadweep': 2, 'andaman': 2, 'konkan': 2, 'malabar': 2,
+    # Indian cities (low-medium)
+    'mumbai': 2, 'chennai': 2, 'kolkata': 2, 'visakhapatnam': 2,
+    'kochi': 2, 'mangalore': 2, 'puri': 2, 'paradip': 2, 'bhubaneswar': 2,
+    # General India
+    'india': 1, 'indian': 1,
+    # Hazard terms
+    'cyclone': 1, 'flood': 1, 'tsunami': 1, 'storm surge': 1,
+    'coastal erosion': 1, 'high tide': 1, 'tidal wave': 1,
+    'landslide': 1, 'earthquake': 1, 'oil spill': 1,
+}
 
-# Keywords that must be present for relevance
-INCLUDE_KEYWORDS = [
-    'india', 'indian', 'mumbai', 'chennai', 'kolkata', 'delhi', 'bangalore',
-    'hyderabad', 'kerala', 'tamil nadu', 'maharashtra', 'gujarat', 'odisha',
-    'west bengal', 'andhra pradesh', 'karnataka', 'goa', 'bay of bengal',
-    'arabian sea', 'indian ocean', 'coast guard', 'ndrf', 'imd'
-]
+PENALTY_KEYWORDS = {
+    'nepal': -5, 'pakistan': -5, 'bangladesh': -3,
+    'china': -5, 'japan': -5, 'usa': -5, 'america': -5,
+    'europe': -5, 'africa': -5, 'australia': -5,
+    'cricket': -10, 'ipl': -10, 'election': -10,
+    'bollywood': -10, 'movie': -10, 'film': -10,
+    'stock market': -5, 'sensex': -5, 'nifty': -5,
+}
 
-def is_relevant_content(title, summary):
-    """Check if the content is relevant to Indian coastal disasters"""
+def relevance_score(title, summary):
+    """Score content relevance to Indian coastal disasters. >= 3 means relevant."""
     content = (title + " " + summary).lower()
-    
-    # Exclude if contains any exclude keywords
-    for keyword in EXCLUDE_KEYWORDS:
+    score = 0
+    for keyword, points in BOOST_KEYWORDS.items():
         if keyword in content:
-            return False
-    
-    # For GDACS, check if it mentions India
-    if 'gdacs' in content or 'disaster alert' in content:
-        # Only include if it mentions India or Indian regions
-        for keyword in INCLUDE_KEYWORDS:
-            if keyword in content:
-                return True
-        return False
-    
-    # For other sources, must contain at least one include keyword
-    for keyword in INCLUDE_KEYWORDS:
+            score += points
+    for keyword, points in PENALTY_KEYWORDS.items():
         if keyword in content:
-            return True
-    
-    return False
+            score += points  # points are already negative
+    return score
 
 def harvest():
     db = SessionLocal()
@@ -101,7 +105,7 @@ def harvest():
                 content_text += f"\n\n{summary}"
 
             # 4. Filter irrelevant content
-            if not is_relevant_content(entry.title, summary):
+            if relevance_score(entry.title, summary) < 3:
                 filtered_count += 1
                 continue
 

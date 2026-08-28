@@ -39,7 +39,7 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
       // Rollback on error
       setConfirmed(context.previousConfirmed);
       setConfirmCount(context.previousCount);
-      toast.error("Failed to confirm report");
+      toast.error(t("errors.failedConfirm"));
     },
     onSuccess: (data) => {
       // Update with actual server values
@@ -65,7 +65,7 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
       });
     } else {
       navigator.clipboard.writeText(reportUrl);
-      toast.success("Report link copied to clipboard!");
+      toast.success(t("linkCopied"));
     }
   };
 
@@ -90,6 +90,7 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
                   <img 
                     src={report.reporter_profile_photo} 
                     alt={report.reporterName}
+                    loading="lazy"
                     className="w-6 h-6 rounded-full object-cover border border-gray-200 dark:border-[rgb(47,51,54)] shrink-0"
                   />
                 ) : (
@@ -112,7 +113,7 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
                   ${report.status === "verified" ? "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20" :
                     report.status === "false"    ? "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20" :
                                                    "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20"}`}>
-                  {report.status === "false" ? "Rejected" : (report.status === "verified" ? "Verified" : "Pending")}
+                  {report.status === "false" ? t("rejected") : (report.status === "verified" ? t("verified") : t("pending"))}
                 </span>
               </h3>
               <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
@@ -149,7 +150,7 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
             <div className="flex-1">
               <div className="bg-gray-50 dark:bg-[rgb(38,38,38)] p-3 rounded-xl border border-gray-100 dark:border-[rgb(47,51,54)] mb-2 lg:mb-3">
                 <p className="text-gray-700 dark:text-gray-300 text-sm leading-relaxed">
-                  {report.description || "Situation under assessment."}
+                  {report.description || t("situationAssessment")}
                 </p>
               </div>
 
@@ -165,7 +166,7 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
                 >
                   <Plus size={16} className={`${confirmed ? "fill-current rotate-45" : ""} group-hover:scale-110 transition-transform`} />
                   {confirmCount > 0 && <span className="font-semibold">{confirmCount}</span>}
-                  <span className="hidden sm:inline">{confirmed ? "Confirmed" : "Confirm"}</span>
+                  <span className="hidden sm:inline">{confirmed ? t("confirmed") : t("confirm")}</span>
                 </button>
                 <button onClick={(e) => { e.stopPropagation(); setCommentsOpen((o) => !o); }}
                   className="flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors group">
@@ -176,7 +177,7 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
                 <button onClick={(e) => { e.stopPropagation(); handleShare(); }}
                   className="flex items-center gap-1.5 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors group">
                   <Share2 size={16} className="group-hover:scale-110 transition-transform" /> 
-                  <span className="hidden sm:inline">Share</span>
+                  <span className="hidden sm:inline">{t("share")}</span>
                 </button>
               </div>
             </div>
@@ -206,13 +207,14 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
                               preload="metadata"
                             />
                             <div className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md">
-                              Video
+                              {t("video")}
                             </div>
                           </>
                         ) : (
                           <img
                             src={img}
                             alt={`Incident ${idx + 1}`}
+                            loading="lazy"
                             className="w-full h-full object-cover group-hover/img:scale-105 transition-all duration-300"
                             onError={(e) => { e.target.style.display = "none"; }}
                           />
@@ -229,6 +231,23 @@ const ReportCard = ({ report, showAdminActions = false, onVerify, onDelete, onCa
               </div>
             )}
           </div>
+
+          {report.ai_authenticity_score !== undefined && report.ai_authenticity_score !== null && (
+            <div className="mt-3 flex items-center gap-2">
+              <div className="bg-gray-200 dark:bg-gray-700 rounded-full h-1.5 flex-1 overflow-hidden">
+                <div 
+                  className={`h-full ${
+                    report.ai_authenticity_score >= 0.7 ? "bg-green-500" :
+                    report.ai_authenticity_score >= 0.4 ? "bg-yellow-500" : "bg-red-500"
+                  }`}
+                  style={{ width: `${Math.round(report.ai_authenticity_score * 100)}%` }}
+                />
+              </div>
+              <span className="text-[10px] font-medium text-gray-500 dark:text-gray-400 shrink-0">
+                AI: {Math.round(report.ai_authenticity_score * 100)}%
+              </span>
+            </div>
+          )}
 
           {/* Comments section */}
           {commentsOpen && (

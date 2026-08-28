@@ -10,6 +10,7 @@ import {
 
 import Layout from "./components/Layout.jsx";
 import useAuthUser from "./hooks/useAuthUser.js";
+import { axiosInstance } from "./lib/axios.js";
 
 const AdminDashboard = lazy(
   () => import("./pages/AdminDashboard.jsx")
@@ -113,38 +114,77 @@ const App = () => {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    // Establish WebSocket connection for real-time updates
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const host = window.location.hostname === "localhost" ? "localhost:5001" : window.location.host;
-    const ws = new WebSocket(`${protocol}//${host}/api/v1/ws`);
+    let ws;
+    let retryDelay = 1000;
+    let mounted = true;
 
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        if (message.type === "new_report" || message.type === "report_verified") {
-          queryClient.invalidateQueries({ queryKey: ["reports"] });
-          queryClient.invalidateQueries({ queryKey: ["adminReports"] });
-          queryClient.invalidateQueries({ queryKey: ["allAdminReports"] });
-          queryClient.invalidateQueries({ queryKey: ["reportStats"] });
-          queryClient.invalidateQueries({ queryKey: ["aiClusters"] });
-          queryClient.invalidateQueries({ queryKey: ["map-data"] });
-        } else if (message.type === "new_alert") {
-          queryClient.invalidateQueries({ queryKey: ["alerts"] });
-          queryClient.invalidateQueries({ queryKey: ["myAlerts"] });
-        } else if (message.type === "new_social_post") {
-          queryClient.invalidateQueries({ queryKey: ["socialFeed"] });
+    function connect() {
+      if (!mounted) return;
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.hostname === "localhost" ? "localhost:5001" : window.location.host;
+      ws = new WebSocket(`${protocol}//${host}/api/v1/ws`);
+
+      ws.onopen = () => { retryDelay = 1000; };
+
+      ws.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data);
+          if (message.type === "new_report" || message.type === "report_verified") {
+            queryClient.invalidateQueries({ queryKey: ["reports"] });
+            queryClient.invalidateQueries({ queryKey: ["adminReports"] });
+            queryClient.invalidateQueries({ queryKey: ["allAdminReports"] });
+            queryClient.invalidateQueries({ queryKey: ["reportStats"] });
+            queryClient.invalidateQueries({ queryKey: ["aiClusters"] });
+            queryClient.invalidateQueries({ queryKey: ["map-data"] });
+          } else if (message.type === "new_alert") {
+            queryClient.invalidateQueries({ queryKey: ["alerts"] });
+            queryClient.invalidateQueries({ queryKey: ["myAlerts"] });
+          } else if (message.type === "new_social_post") {
+            queryClient.invalidateQueries({ queryKey: ["socialFeed"] });
+          }
+        } catch (err) {
+          console.error("Failed to parse WebSocket message:", err);
         }
-      } catch (err) {
-        console.error("Failed to parse WebSocket message:", err);
-      }
-    };
+      };
+
+      ws.onclose = () => {
+        if (!mounted) return;
+        setTimeout(() => {
+          retryDelay = Math.min(retryDelay * 2, 30000);
+          connect();
+        }, retryDelay + Math.random() * 1000);
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
+    }
+
+    connect();
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
+      mounted = false;
+      if (ws && ws.readyState === WebSocket.OPEN) {
         ws.close();
       }
     };
   }, [queryClient]);
+
+  useEffect(() => {
+    if (!authUser) return;
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          axiosInstance.patch('/auth/update-coordinates', {
+            latitude: pos.coords.latitude,
+            longitude: pos.coords.longitude,
+          }).catch(() => {});
+        },
+        () => {},
+        { timeout: 10000, maximumAge: 300000 }
+      );
+    }
+  }, [authUser]);
 
   if (isLoading) {
     return (

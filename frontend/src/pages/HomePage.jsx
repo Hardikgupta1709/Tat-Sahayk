@@ -4,10 +4,12 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router";
 import ReportCard from '../components/ReportCard.jsx';
 import ReportModal from '../components/ReportModal.jsx';
+import SkeletonCard from '../components/SkeletonCard.jsx';
+import BottomNav from '../components/BottomNav.jsx';
 import { fetchReports, fetchSocialFeed, fetchAlerts } from '../lib/api.js';
 import { AlertOctagon } from 'lucide-react';
 import { Phone, ShieldAlert, HeartPulse, Flame, AlertTriangle,
-  ChevronRight, Loader2, PhoneCall, ClipboardList } from "lucide-react";
+  ChevronRight, Loader2, PhoneCall, ClipboardList, Plus } from "lucide-react";
 
 const STATUS_FILTERS = [
   { labelKey: "all",      value: "" },
@@ -56,10 +58,10 @@ const { data: alerts } = useQuery({
   }, [searchParams, reports, statusFilter, setSearchParams]);
 
   const helplines = [
-    { id: 1, name: "Police Control",    number: "100",  icon: <ShieldAlert size={18} />, color: "from-blue-500 to-blue-600" },
-    { id: 2, name: "Medical Emergency", number: "102",  icon: <HeartPulse size={18} />,  color: "from-red-500 to-red-600" },
-    { id: 3, name: "Disaster Helpline", number: "1077", icon: <Flame size={18} />,        color: "from-orange-500 to-orange-600" },
-    { id: 4, name: "Disaster Mgmt.",    number: "108",  icon: <Phone size={18} />,        color: "from-sky-500 to-sky-600" },
+    { id: 1, name: t("helpline.policeControl") || "Police Control",    number: "100",  icon: <ShieldAlert size={18} />, color: "from-blue-500 to-blue-600" },
+    { id: 2, name: t("helpline.medicalEmergency") || "Medical Emergency", number: "102",  icon: <HeartPulse size={18} />,  color: "from-red-500 to-red-600" },
+    { id: 3, name: t("helpline.disasterHelpline") || "Disaster Helpline", number: "1077", icon: <Flame size={18} />,        color: "from-orange-500 to-orange-600" },
+    { id: 4, name: t("helpline.disasterMgmt") || "Disaster Mgmt.",    number: "108",  icon: <Phone size={18} />,        color: "from-sky-500 to-sky-600" },
   ];
 
   const SidebarContent = () => {
@@ -120,15 +122,15 @@ const { data: alerts } = useQuery({
       <div className="bg-white dark:bg-[rgb(22,22,22)] rounded-2xl p-4 border border-gray-200 dark:border-[rgb(47,51,54)]">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-2">
-            <AlertOctagon size={16} className="text-sky-500" /> Government Alerts
+            <AlertOctagon size={16} className="text-sky-500" /> {t("governmentAlerts")}
           </h3>
           <a href="/alerts" className="text-xs font-medium text-sky-500 hover:text-sky-600 transition-colors">
-            View All →
+            {t("viewAll")} →
           </a>
         </div>
         
         {!alerts?.filter(a => a.is_active).length ? (
-          <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">No active alerts</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">{t("noActiveAlerts")}</p>
         ) : (
           <div className="space-y-2">
             {alerts.filter(a => a.is_active).slice(0, 3).map((alert) => {
@@ -171,7 +173,7 @@ const { data: alerts } = useQuery({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1.5 flex-wrap">
             <span className={`text-xs font-semibold ${config.text}`}>
-              🏛 Government Advisory
+              🏛 {t("governmentAdvisory")}
             </span>
             <span className={`text-[10px] font-medium uppercase px-2 py-0.5 rounded-full ${config.bg} ${config.text} border ${config.border}`}>
               {alert.severity}
@@ -198,7 +200,7 @@ const { data: alerts } = useQuery({
           {t("socialUpdates")}
         </h3>
         {!socialFeed?.length ? (
-          <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">{t("noUpdates")} — feed runs every 15 min</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 text-center py-4">{t("noUpdates")} — {t("feedRunsEvery")}</p>
         ) : (
           <div className="space-y-2 max-h-[500px] overflow-y-auto scrollbar-hide">
             {socialFeed.slice(0, 10).map((post) => (
@@ -224,7 +226,7 @@ const { data: alerts } = useQuery({
     <>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 className="text-xl lg:text-2xl font-bold text-gray-900 dark:text-white">
-          What's Happening
+          {t("whatsHappening")}
         </h2>
 
         {/* Filter pills */}
@@ -241,10 +243,22 @@ const { data: alerts } = useQuery({
         </div>
       </div>
 
+      {/* Pinned Government Alert */}
+      {alerts?.filter(a => a.is_active).length > 0 && (
+        <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl flex items-center gap-2">
+          <AlertTriangle size={16} className="text-amber-500 shrink-0" />
+          <p className="text-sm font-medium text-amber-700 dark:text-amber-300 truncate">
+            ⚠️ {alerts.filter(a => a.is_active)[0].title}
+          </p>
+          <a href="/alerts" className="text-xs text-amber-600 dark:text-amber-400 font-medium shrink-0 hover:underline">
+            {t("viewAll")}
+          </a>
+        </div>
+      )}
+
       {reportsLoading ? (
-        <div className="flex flex-col items-center py-20">
-          <Loader2 className="animate-spin text-sky-500 mb-3" size={36} />
-          <p className="text-sm font-medium text-gray-500 dark:text-gray-400">{t("loading")}</p>
+        <div className="flex flex-col gap-3 lg:gap-4">
+          {[1, 2, 3].map((n) => <SkeletonCard key={n} />)}
         </div>
       ) : reports?.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 lg:gap-4">
@@ -255,9 +269,12 @@ const { data: alerts } = useQuery({
           ))}
         </div>
       ) : (
-        <div className="text-center py-20 bg-white dark:bg-[rgb(22,22,22)] border border-gray-200 dark:border-[rgb(47,51,54)] rounded-2xl">
-          <AlertTriangle className="mx-auto text-gray-300 dark:text-gray-600 mb-2" size={48} />
-          <p className="text-gray-500 dark:text-gray-400 text-sm">{t("noIncidents")}</p>
+        <div className="text-center py-16 bg-white dark:bg-[rgb(22,22,22)] border border-gray-200 dark:border-[rgb(47,51,54)] rounded-2xl">
+          <AlertTriangle className="mx-auto text-gray-300 dark:text-gray-600 mb-3" size={40} />
+          <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">{t("noReportsYet")}</p>
+          <a href="/new" className="inline-flex items-center gap-2 px-5 py-2.5 bg-sky-500 text-white text-sm font-medium rounded-full hover:bg-sky-600 transition-colors">
+            <Plus size={16} /> {t("createReport")}
+          </a>
         </div>
       )}
     </>
@@ -279,7 +296,7 @@ const { data: alerts } = useQuery({
         </button>
       </div>
 
-      <div className="lg:hidden p-3 pb-8">
+      <div className="lg:hidden p-3 pb-20 lg:pb-0">
         {mobileTab === "incidents" && <IncidentsList />}
         {mobileTab === "sidebar"   && <SidebarContent />}
       </div>
@@ -293,6 +310,9 @@ const { data: alerts } = useQuery({
       {selectedReport && (
         <ReportModal report={selectedReport} onClose={() => setSelectedReport(null)} />
       )}
+
+      {/* Mobile Bottom Navigation */}
+      <BottomNav />
     </div>
   );
 };

@@ -38,7 +38,7 @@ const ReportModal = ({ report, onClose }) => {
       // Rollback on error
       setConfirmed(context.previousConfirmed);
       setConfirmCount(context.previousCount);
-      toast.error("Failed to confirm report");
+      toast.error(t("errors.failedConfirm"));
     },
     onSuccess: (data) => {
       // Update with actual server values
@@ -64,7 +64,7 @@ const ReportModal = ({ report, onClose }) => {
       });
     } else {
       navigator.clipboard.writeText(reportUrl);
-      toast.success("Report link copied to clipboard!");
+      toast.success(t("linkCopied"));
     }
   };
 
@@ -86,7 +86,7 @@ const ReportModal = ({ report, onClose }) => {
         >
           {/* Header */}
           <div className="sticky top-0 bg-white/80 dark:bg-[rgb(22,22,22)]/80 backdrop-blur-md border-b border-gray-200 dark:border-[rgb(47,51,54)] px-4 py-3 flex items-center justify-between z-10 shrink-0">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-white">Report Details</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-white">{t("reportDetails")}</h2>
             <button
               onClick={onClose}
               className="p-2 hover:bg-gray-100 dark:hover:bg-[rgb(38,38,38)] rounded-full transition-colors"
@@ -104,6 +104,7 @@ const ReportModal = ({ report, onClose }) => {
                 <img 
                   src={report.reporter_profile_photo} 
                   alt={report.reporterName}
+                  loading="lazy"
                   className="w-12 h-12 rounded-full object-cover border-2 border-gray-200 dark:border-[rgb(47,51,54)] shrink-0"
                 />
               ) : (
@@ -130,7 +131,7 @@ const ReportModal = ({ report, onClose }) => {
                 ${report.status === "verified" ? "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20" :
                   report.status === "false"    ? "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20" :
                                                  "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20"}`}>
-                {report.status === "false" ? t("rejected") : t(report.status || "pending")}
+                {report.status === "false" ? t("rejected") : (report.status === "verified" ? t("verified") : t("pending"))}
               </span>
             </div>
 
@@ -143,7 +144,7 @@ const ReportModal = ({ report, onClose }) => {
             {/* Description */}
             <div className="bg-gray-50 dark:bg-[rgb(38,38,38)] p-4 rounded-xl border border-gray-100 dark:border-[rgb(47,51,54)]">
               <p className="text-gray-700 dark:text-gray-300 leading-relaxed">
-                {report.description || "Situation under assessment."}
+                {report.description || t("situationAssessment")}
               </p>
             </div>
 
@@ -171,13 +172,14 @@ const ReportModal = ({ report, onClose }) => {
                             preload="metadata"
                           />
                           <div className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded-md z-10">
-                            Video
+                            {t("video")}
                           </div>
                         </>
                       ) : (
                         <img
                           src={img}
                           alt={`Incident ${idx + 1}`}
+                          loading="lazy"
                           className="w-full h-full object-cover group-hover:scale-105 transition-all duration-300"
                           onError={(e) => { e.target.style.display = "none"; }}
                         />
@@ -200,12 +202,12 @@ const ReportModal = ({ report, onClose }) => {
               >
                 <Plus size={18} className={`${confirmed ? "fill-current" : ""} group-hover:scale-110 transition-transform`} />
                 {confirmCount > 0 && <span className="font-semibold">{confirmCount}</span>}
-                <span>Confirm</span>
+                <span>{confirmed ? t("confirmed") : t("confirm")}</span>
               </button>
               <button onClick={handleShare}
                 className="flex items-center gap-2 text-sm font-medium text-gray-500 dark:text-gray-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors group">
                 <Share2 size={18} className="group-hover:scale-110 transition-transform" /> 
-                <span>Share</span>
+                <span>{t("share")}</span>
               </button>
               {/* Removed pending/verified indicator from action bar */}
             </div>

@@ -24,8 +24,10 @@ def create_report(db: Session, report: ReportCreate, user_id: int):
         for file_url in report.image_filenames:
             if file_url.startswith("http"):
                 file_path = file_url
+            elif file_url.startswith("/"):
+                file_path = file_url
             else:
-                file_path = f"uploads/{file_url}" 
+                file_path = f"/uploads/{file_url}"
             
             db_media = Media(
                 report_id=db_report.id,

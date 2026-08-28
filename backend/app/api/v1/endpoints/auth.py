@@ -310,10 +310,7 @@ def admin_login(
             ),
         )
 
-    if not user.profile_photo:
-        user.profile_photo = "/Admin DP.jpeg"
-        db.commit()
-        db.refresh(user)
+
 
     return issue_access_token(user)
 
@@ -376,6 +373,25 @@ def update_user_location(
         "district": district,
         "state": state_name,
     }
+
+
+@router.patch("/update-coordinates")
+def update_user_coordinates(
+    coords: dict,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(
+        deps.get_current_user
+    ),
+):
+    """Save the user's GPS coordinates for proximity-based alert dispatch."""
+    lat = coords.get("latitude")
+    lon = coords.get("longitude")
+    if lat is not None and lon is not None:
+        current_user.latitude = float(lat)
+        current_user.longitude = float(lon)
+        db.commit()
+        db.refresh(current_user)
+    return {"message": "Coordinates updated"}
 
 
 @router.post("/send-otp")

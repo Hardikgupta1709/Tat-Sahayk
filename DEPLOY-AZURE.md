@@ -5,10 +5,11 @@ creating and hardening a Linux VM, getting a hostname with real HTTPS, wiring
 up the optional Azure services the application can use, and making a $100
 credit last.
 
-It does **not** duplicate the application runbook. Secret generation,
-building, health verification, administrator creation, backups, upgrades and
-rollback all live in [DEPLOYMENT.md](DEPLOYMENT.md), and this guide points at
-the relevant sections as you reach them.
+It is self-contained: follow it top to bottom and you reach a running
+deployment without opening another document.
+[DEPLOYMENT.md](DEPLOYMENT.md) is the provider-neutral runbook for what comes
+*after* — backups, upgrades, rollback, database restoration and a fuller
+troubleshooting index.
 
 Target shape — the same single-host topology any other provider would get. The
 container stack does not change; Azure appears only as optional hosted services
@@ -27,6 +28,25 @@ frontend (nginx)  ──▶  backend (:5001)  ──▶  db (PostGIS)
 
 Only ports 22, 80 and 443 are reachable from the internet. Postgres, the
 backend and the ML service never publish a host port at all.
+
+### How to read this guide
+
+Work through the sections **in order**. Sections 2, 9 and 13 are background or
+optional — skip them on a first deployment and come back afterwards.
+
+| Sections | Where the commands run |
+| --- | --- |
+| 3, 4, 5 | Your own laptop — `az` CLI and a browser |
+| 6, 7, 8, 10, 11 | On the VM, over `ssh` |
+| 9, 12 | `az` on the laptop, `.env.production` edits on the VM |
+
+**The images are built on the VM, not on your laptop.** The VM does its own
+`git clone` and its own `docker compose build`, so a local `.env.production`
+and a local build are not part of this path. The only things you need installed
+locally are `az` and an SSH client.
+
+By the end of section 11 you have a complete working deployment. Everything
+after that is optional or operational.
 
 ---
 
@@ -167,9 +187,17 @@ by default. Unlike a paid subscription you often cannot get an increase
 approved, so check first:
 
 ```bash
-az vm list-usage --location centralindia --output table \
-  | grep -Ei 'Total Regional|BASv2|BSv2'
+az vm list-usage --location centralindia \
+  --query "[?contains(localName,'Total Regional') || contains(localName,'BASv2') || contains(localName,'BSv2')].{quota:localName,used:currentValue,limit:limit}" \
+  --output table
 ```
+
+Filter with `--query` rather than piping `--output table` into `grep`: which
+columns the table view prints changes between CLI releases, and on some versions
+the quota name is not one of them, so a `grep` silently matches nothing and
+looks like a quota of zero. If the command above prints an empty table, run
+`az vm list-usage --location centralindia --output table` on its own and read it
+directly.
 
 You need at least 2 vCPUs of headroom in both the regional total and the
 `Standard BASv2 Family` line. If `BASv2` shows a limit of 0, fall back to the
@@ -404,20 +432,30 @@ git checkout prototype/full-working
 If the repository is private, add a read-only deploy key on the VM rather than
 pasting a personal access token into the shell.
 
-Create `.env.production` and generate real secrets exactly as described in
-[DEPLOYMENT.md §2](DEPLOYMENT.md):
+Create `.env.production` and generate two independent secrets:
 
 ```bash
 cp .env.production.example .env.production
 chmod 600 .env.production
-openssl rand -hex 32   # SECRET_KEY
-openssl rand -hex 24   # POSTGRES_PASSWORD (also goes into DATABASE_URL)
+openssl rand -hex 32   # -> SECRET_KEY
+openssl rand -hex 24   # -> POSTGRES_PASSWORD, and the same value in DATABASE_URL
 ```
 
-Beyond the values that runbook lists, set these:
+Then `nano .env.production` and replace every placeholder. These are the lines
+that must change — the validator in section 11.1 rejects the file if any
+`replace-with-...` value survives:
 
 ```dotenv
-# Must be the real HTTPS origin — the hostname from section 7, not the IP
+# From the first openssl command
+SECRET_KEY=<32-byte-hex>
+
+# From the second openssl command, the SAME value in both lines.
+# Hex is URL-safe, so it needs no percent-encoding inside the URL.
+POSTGRES_PASSWORD=<24-byte-hex>
+DATABASE_URL=postgresql+psycopg2://tat_sahayk:<24-byte-hex>@db:5432/tat_sahayk
+
+# The real HTTPS origin — the hostname from section 7, not the IP.
+# No trailing slash.
 CORS_ORIGINS=https://tat-sahayk-prod-<your-suffix>.centralindia.cloudapp.azure.com
 
 # Keep loopback-only on a public host
@@ -433,6 +471,9 @@ AZURE_ENABLED=false
 MEDIA_STORAGE_PROVIDER=local
 PHONE_OTP_PROVIDER=disabled
 ```
+
+Leave everything else in the file at its default. `.env.production` is
+gitignored and must never be committed.
 
 Leave `PHONE_OTP_PROVIDER=disabled`. The only production alternative is `acs`,
 and **Azure Communication Services does not sell phone numbers for India** — an
@@ -830,17 +871,50 @@ The staging certificate will show as untrusted in a browser. That is expected
 
 ## 11. Build, start and verify
 
-Follow [DEPLOYMENT.md §4–7](DEPLOYMENT.md) unchanged: run the policy
-validator, build, start, create the first administrator, and work through the
-health checks.
+Everything here runs on the VM, from `/opt/tat-sahayk`. It is the same sequence
+as [DEPLOYMENT.md §4–7](DEPLOYMENT.md), written out in full so you do not have
+to move between two documents mid-deployment.
 
-Three Azure-specific notes:
+Every command needs the same two flags, so set them once per shell:
 
-**Burstable CPU will slow the first build.** B-series VMs run at a baseline
-fraction of their vCPUs and spend banked credits to exceed it. The first build
-— `npm ci` plus the Vite production build, plus pip installing torch — is long
-enough to exhaust those credits, after which the build crawls at baseline. Run
-it under `tmux` or `screen` so an SSH drop does not kill it, and expect
+```bash
+cd /opt/tat-sahayk
+alias dc='docker compose --env-file .env.production -f docker-compose.production.yml'
+```
+
+The alias lasts only for that shell. After reconnecting, set it again or type
+the flags out.
+
+### 11.1 Validate the configuration
+
+```bash
+python3 scripts/validate_production_compose.py --env-file .env.production
+dc config --quiet
+```
+
+The first must print `Production Compose validation passed`. Fix whatever it
+reports before building — it catches wrong provider combinations, leftover
+placeholder secrets and unsafe port exposure. **Do not add
+`--allow-example-secrets`**: that flag exists only so CI can check the committed
+example file, and it switches off exactly the checks that matter here.
+
+The second prints nothing on success.
+
+### 11.2 Build the images
+
+Run it under `tmux` so an SSH drop does not kill the build:
+
+```bash
+tmux new -s build
+dc build --pull
+```
+
+Detach with `Ctrl-b d`; reattach with `tmux attach -t build`.
+
+**Expect this to be slow.** B-series VMs run at a baseline fraction of their
+vCPUs and spend banked credits to exceed it. This build — `npm ci` plus the Vite
+production build, plus pip installing torch, transformers and a spaCy model — is
+long enough to exhaust those credits, after which it crawls at baseline. Budget
 considerably longer than the 10–20 minutes an equivalent non-burstable machine
 would take.
 
@@ -854,16 +928,66 @@ az vm resize --resource-group tat-sahayk-rg --name tat-sahayk-prod \
   --size Standard_B2als_v2    # then come back down
 ```
 
-Resizing restarts the VM; disks and data persist. Check quota for the target
-family first — `Standard DASv5 Family` may be 0 on a student subscription, in
-which case this route is closed and you simply wait out the slow build.
+Those two run on your laptop, not the VM. Resizing restarts the VM; disks and
+data persist. Check quota for the target family first — `Standard DASv5 Family`
+may be 0 on a student subscription, in which case this route is closed and you
+wait out the slow build.
 
-**The ML service starts slowly**, which is why its healthcheck allows a
-180-second start period. `backend` waits for it to report healthy, so the
-stack legitimately takes a few minutes to converge on first boot. Watch
-`docker compose ... ps` rather than assuming a hang.
+### 11.3 Start the stack
 
-**Then confirm the public entry point end to end:**
+```bash
+dc up -d
+dc ps
+```
+
+The backend applies Alembic migrations before starting Uvicorn, so this first
+start is also what creates the schema.
+
+**The ML service starts slowly** — its healthcheck allows a 180-second start
+period, and `backend` will not start until it reports healthy. The stack
+legitimately takes a few minutes to converge on first boot, so watch `dc ps`
+until all four services read `healthy` rather than assuming a hang.
+
+If one stays unhealthy, read its logs in dependency order — `db`, then
+`ml-service`, then `backend`, then `frontend`:
+
+```bash
+dc logs --tail=200 ml-service
+```
+
+### 11.4 Verify each service
+
+```bash
+curl --fail --silent --output /dev/null \
+  --write-out "frontend HTTP %{http_code}\n" http://localhost:8080/health
+
+dc exec -T backend curl --fail --silent http://localhost:5001/health/ready
+
+dc exec -T ml-service curl --fail --silent http://localhost:8000/health
+
+dc exec -T db sh -c 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'
+```
+
+All four must succeed before going on.
+
+### 11.5 Create the first administrator
+
+Administrator accounts cannot be created through public signup. The script
+prompts for the password and never prints it:
+
+```bash
+dc run --rm backend python scripts/create_admin.py \
+  --email admin@agency.gov.in \
+  --full-name "District Administrator" \
+  --district "Mumbai" \
+  --state "Maharashtra"
+```
+
+The password needs at least 12 characters with an uppercase letter, a lowercase
+letter, a number and a special character. For a national-scope account, replace
+the district and state flags with `--national`.
+
+### 11.6 Confirm the public entry point
 
 ```bash
 curl -I http://<your-hostname>          # expect a redirect to HTTPS
@@ -882,6 +1006,11 @@ second session and watch the first one refresh without a reload.
 That is a complete, working deployment on local scoring and local media. If you
 want the hosted Azure services on top, go back to section 9 and enable them one
 at a time from here — you now have a known-good state to compare against.
+
+For everything after this — backups, upgrades to a new commit, rollback,
+database restoration and routine log and restart commands — use
+[DEPLOYMENT.md §9–14](DEPLOYMENT.md). Take a first backup before your first
+demo, not after it.
 
 ## 12. Managing the $100 credit
 
@@ -1013,6 +1142,17 @@ update the A records.
 **The build is killed partway through.** Almost always memory. Confirm swap is
 active (`free -h` should show 4 GiB), and if it still fails, resize up for the
 build as shown in section 11.
+
+**The `ml-service` build fails on `torch` with `No matching distribution found
+for flit_core`.** The `--index-url` on that pip step points only at the PyTorch
+CPU wheel index, which *replaces* PyPI rather than adding to it. When pip cannot
+use the mirrored `typing-extensions` wheel there — its metadata name uses an
+underscore where the index page uses a hyphen, and pip rejects the mismatch — it
+falls back to building the source distribution, and `flit_core` is not on that
+index. `ml-service/Dockerfile` installs `typing-extensions` from PyPI in the
+step before, which keeps the torch resolve away from that entry. If you see this
+error, confirm that line is present and that you are on the current commit of
+`prototype/full-working`.
 
 **Live updates do not arrive.** Check the browser console for the socket to
 `wss://<hostname>/api/v1/ws`. Note the path has no trailing slash — a redirect

@@ -14,6 +14,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Python deps
 COPY requirements.txt .
 
+# Satisfy torch's typing-extensions dependency from PyPI before the CPU index
+# is in play. The PyTorch index mirrors that package, but the wheel it links
+# reports its name as typing_extensions where the index page says
+# typing-extensions, and pip rejects the mismatch. It then falls back to the
+# sdist, which needs flit_core to build -- and --index-url below replaces PyPI
+# rather than adding to it, so flit_core is unreachable and the build fails.
+# Installing it up front means the torch resolve finds the requirement already
+# met and never looks at the mirrored entry.
+RUN pip install --no-cache-dir "typing-extensions>=4.10.0"
+
 # Install the CPU-only torch build first. The default PyPI linux wheel pulls
 # several GB of nvidia-* CUDA packages that are dead weight on a GPU-less
 # host. Doing this before requirements.txt means the torch>=2.1.0 pin below is
