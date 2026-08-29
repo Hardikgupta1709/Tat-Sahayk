@@ -129,9 +129,9 @@ const ReportModal = ({ report, onClose }) => {
               </span>
               <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium border
                 ${report.status === "verified" ? "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20" :
-                  report.status === "false"    ? "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20" :
+                  report.status === "rejected"    ? "bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20" :
                                                  "bg-gray-100 text-gray-600 border-gray-200 dark:bg-gray-500/10 dark:text-gray-400 dark:border-gray-500/20"}`}>
-                {report.status === "false" ? t("rejected") : (report.status === "verified" ? t("verified") : t("pending"))}
+                {report.status === "rejected" ? t("rejected") : (report.status === "verified" ? t("verified") : t("pending"))}
               </span>
             </div>
 

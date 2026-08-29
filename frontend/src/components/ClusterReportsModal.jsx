@@ -214,9 +214,9 @@ const ReportCard = ({ report, onVerify, onView }) => {
                 </span>
                 <span className={`px-1.5 sm:px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-bold uppercase border
                   ${report.status === "verified" ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800" :
-                    report.status === "false"    ? "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800" :
+                    report.status === "rejected"    ? "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200 dark:border-red-800" :
                                                    "bg-yellow-50 dark:bg-yellow-900/20 text-yellow-700 dark:text-yellow-400 border-yellow-200 dark:border-yellow-800"}`}>
-                  {report.status === "false" ? "Fake" : report.status}
+                  {report.status}
                 </span>
               </div>
               <span className="text-[10px] sm:text-xs text-gray-400 dark:text-gray-500 shrink-0 font-mono">#{report.id}</span>
@@ -269,7 +269,7 @@ const ReportCard = ({ report, onVerify, onView }) => {
               </button>
               <button
                 onClick={(e) => { e.stopPropagation(); onVerify({ id: report.id, status: "false" }); }}
-                disabled={report.status === "false"}
+                disabled={report.status === "rejected"}
                 className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 bg-red-500 hover:bg-red-600 active:scale-95 text-white text-[10px] sm:text-xs font-semibold rounded-lg transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <XCircle size={12} /> Fake

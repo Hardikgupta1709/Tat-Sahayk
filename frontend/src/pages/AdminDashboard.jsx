@@ -219,9 +219,9 @@ const AdminReportCard = ({ report, onVerify }) => {
                 </span>
                 <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase border
                   ${report.status === "verified" ? "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200" :
-                    report.status === "false"    ? "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200" :
+                    report.status === "rejected"    ? "bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 border-red-200" :
                                                    "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-600"}`}>
-                  {report.status === "false" ? "Fake/Irrelevant" : report.status}
+                  {report.status}
                 </span>
               </div>
 
@@ -450,7 +450,7 @@ const AdminDashboard = () => {
     { label: "All",      value: "" },
     { label: "Pending",  value: "pending" },
     { label: "Verified", value: "verified" },
-    { label: "Fake",     value: "false" },
+    { label: "Rejected", value: "rejected" },
   ];
 
   return (
