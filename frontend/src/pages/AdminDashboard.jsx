@@ -321,11 +321,11 @@ const AdminReportCard = ({ report, onVerify }) => {
                 <CheckCircle size={13} /> Verify
               </button>
               <button
-                onClick={() => onVerify(report.id, "false")}
-                disabled={report.status === "false"}
+                onClick={() => onVerify(report.id, "rejected")}
+                disabled={report.status === "rejected"}
                 className="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 text-white text-xs font-bold rounded-xl transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                <XCircle size={13} /> Fake
+                <XCircle size={13} /> Reject
               </button>
               <button
                 onClick={() => onVerify(report.id, "pending")}
@@ -609,12 +609,12 @@ const AdminDashboard = () => {
               </button>
               <button
                 onClick={() => {
-                  cluster.report_ids.forEach(id => doVerify({ id, status: "false" }));
-                  toast.success("Marked as fake");
+                  cluster.report_ids.forEach(id => doVerify({ id, status: "rejected" }));
+                  toast.success("Reports rejected");
                 }}
                 className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 sm:py-2 bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 text-[10px] sm:text-xs font-semibold rounded-lg hover:bg-gray-200 dark:hover:bg-gray-700 active:scale-95 transition-all"
               >
-                <XCircle size={12} className="sm:w-[13px] sm:h-[13px]" /> Fake
+                <XCircle size={12} className="sm:w-[13px] sm:h-[13px]" /> Reject
               </button>
               <button
                 onClick={() => setSelectedCluster(cluster)}

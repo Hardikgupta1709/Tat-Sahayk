@@ -387,9 +387,18 @@ def score_single_report_bg(
             default=str,
         )
 
-        # Do not automatically modify report.status here.
-        # The recommendation is stored in ai_analysis_breakdown,
-        # while an administrator remains responsible for verification.
+        # Zero-Touch AI Pipeline: Auto-verify or auto-reject based on score
+        if result.authenticity_score >= 0.70:
+            report.status = "verified"
+            report.is_verified = True
+            logger.info(f"Report {report_id} auto-verified by AI (score: {result.authenticity_score:.2f})")
+        elif result.authenticity_score < 0.40:
+            report.status = "rejected"
+            report.is_verified = False
+            logger.info(f"Report {report_id} auto-rejected by AI (score: {result.authenticity_score:.2f})")
+        else:
+            report.status = "pending"
+            logger.info(f"Report {report_id} pending manual review (score: {result.authenticity_score:.2f})")
 
         db.commit()
 
@@ -441,6 +450,32 @@ def score_single_report_bg(
 
     finally:
         db.close()
+
+
+@router.patch("/{report_id}/reject", response_model=ReportResponse)
+def reject_report(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(deps.get_current_user)
+):
+    """
+    Manually reject a report (Admin only).
+    """
+    if current_user.role != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions to reject reports"
+        )
+        
+    report = crud_report.get_report(db=db, id=report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+        
+    report.status = "rejected"
+    report.is_verified = False
+    db.commit()
+    db.refresh(report)
+    return report
 # 5. CREATE REPORT
 @router.post("/", response_model=ReportResponse)
 def create_report(

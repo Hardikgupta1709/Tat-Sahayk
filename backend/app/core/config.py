@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     LOCAL_MEDIA_URL: str = "/uploads"
     MEDIA_MAX_FILE_SIZE_MB: int = 10
     MEDIA_ALLOWED_CONTENT_TYPES: str = (
-        "image/jpeg,image/png,image/webp,image/gif"
+        "image/jpeg,image/png,image/webp,image/gif,video/mp4,video/quicktime"
     )
 
     # Phone verification

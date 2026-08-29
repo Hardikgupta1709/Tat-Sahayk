@@ -18,10 +18,10 @@ class ImageHazardClassifier:
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"🖼️  Image Classifier using device: {self.device}")
 
-        logger.info("🖼️  Loading CLIP model (openai/clip-vit-base-patch32)...")
+        logger.info("🖼️  Loading CLIP model (openai/clip-vit-large-patch14)...")
         try:
-            self.model = CLIPModel.from_pretrained("openai/clip-vit-base-patch32")
-            self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-base-patch32")
+            self.model = CLIPModel.from_pretrained("openai/clip-vit-large-patch14")
+            self.processor = CLIPProcessor.from_pretrained("openai/clip-vit-large-patch14")
             self.model.to(self.device)
             self.model.eval()
             logger.info("✅ CLIP model loaded successfully")
@@ -30,13 +30,13 @@ class ImageHazardClassifier:
             raise
         
         self.categories = [
-            "a photo of a tsunami with massive ocean waves flooding the coast",
-            "a photo of high ocean waves during a severe storm",
-            "a photo of coastal storm surge flooding buildings",
-            "a photo of coastal flooding with water covering streets",
-            "a photo of coastal erosion with damaged shoreline",
-            "a photo of a tropical cyclone with dark clouds and heavy rain",
-            "a photo of calm ocean water with normal conditions"
+            "a photo of a catastrophic tsunami with massive ocean waves flooding the coast",
+            "a photo of dangerously high ocean waves crashing during a severe storm",
+            "a photo of catastrophic coastal storm surge flooding buildings and streets",
+            "a photo of extreme coastal flooding with deep water covering streets and houses",
+            "a photo of severe coastal erosion with damaged shoreline and falling cliffs",
+            "a photo of a violent tropical cyclone with dark clouds and heavy rain",
+            "a photo of calm, peaceful ocean water with normal, safe weather conditions"
         ]
         
         self.category_labels = [
@@ -50,9 +50,17 @@ class ImageHazardClassifier:
         ]
     
     def classify_image(self, image_path: str) -> Dict:
+        import os
+        if not os.path.exists(image_path):
+            logger.error(f"❌ Image not found: {image_path}")
+            return {"hazard_type": "unknown", "confidence": 0.0, "error": "File not found", "is_hazard": False}
+
         try:
             logger.info(f" Classifying image: {image_path}")
             image = Image.open(image_path).convert("RGB")
+            image.verify()
+            image = Image.open(image_path).convert("RGB")
+            
             inputs = self.processor(
                 text=self.categories,
                 images=image,
@@ -84,7 +92,7 @@ class ImageHazardClassifier:
                 "all_scores": all_scores,
                 "severity": severity,
                 "is_hazard": hazard_type != "normal",
-                "model": "clip-vit-base-patch32"
+                "model": "clip-vit-large-patch14"
             }
             
         except Exception as e:
