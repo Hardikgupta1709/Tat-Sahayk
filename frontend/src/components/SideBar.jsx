@@ -56,7 +56,7 @@ const SideBar = ({ isOpen, onClose }) => {
       )}
 
       <aside className={`
-        flex flex-col h-screen
+        flex flex-col h-[100dvh]
         bg-white dark:bg-black
         border-r border-gray-200 dark:border-[rgb(47,51,54)]
         w-64 shrink-0
@@ -110,7 +110,7 @@ const SideBar = ({ isOpen, onClose }) => {
         </nav>
 
         {/* Bottom — user info - always visible, no sign out button here */}
-        <div className="p-3 shrink-0 bg-white dark:bg-black">
+        <div className="p-3 pb-6 lg:pb-3 shrink-0 bg-white dark:bg-black">
           {authUser ? (
             <>
               <div className="mb-3 px-3 py-2 border-t border-gray-200 dark:border-[rgb(47,51,54)] pt-3">

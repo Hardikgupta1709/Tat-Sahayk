@@ -10,7 +10,7 @@ const BottomNav = () => {
     { to: "/", icon: <Home size={24} />, label: t("home") || "Home" },
     { to: "/map", icon: <Map size={24} />, label: t("map") || "Map" },
     { to: "/new", icon: <Plus size={28} />, label: t("report") || "Report", isCenter: true },
-    { to: "/alerts", icon: <Bell size={24} />, label: t("alerts") || "Alerts" },
+    { to: "/alerts", icon: <Bell size={24} />, label: t("alertsTab", "Alerts") },
     { to: "/profile", icon: <User size={24} />, label: t("profile") || "Profile" },
   ];
 
