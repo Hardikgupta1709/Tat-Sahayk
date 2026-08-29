@@ -15,7 +15,7 @@ const STATUS_FILTERS = [
   { labelKey: "all",      value: "" },
   { labelKey: "pending",  value: "pending" },
   { labelKey: "verified", value: "verified" },
-  { labelKey: "rejected", value: "false" },
+  { labelKey: "rejected", value: "rejected" },
 ];
 
 const HomePage = () => {
@@ -30,6 +30,10 @@ const HomePage = () => {
     queryKey: ['reports', statusFilter],
     queryFn: () => fetchReports({ status: statusFilter || undefined, allReports: true, minimal: true }),
   });
+
+  const displayReports = statusFilter === ""
+    ? reports?.filter(r => r.status !== "rejected")
+    : reports;
 
   const { data: socialFeed } = useQuery({
     queryKey: ['socialFeed'],
@@ -260,9 +264,9 @@ const { data: alerts } = useQuery({
         <div className="flex flex-col gap-3 lg:gap-4">
           {[1, 2, 3].map((n) => <SkeletonCard key={n} />)}
         </div>
-      ) : reports?.length > 0 ? (
+      ) : displayReports?.length > 0 ? (
         <div className="grid grid-cols-1 gap-3 lg:gap-4">
-          {reports.map((report) => (
+          {displayReports.map((report) => (
             <div key={report.id} ref={(el) => (reportRefs.current[report.id] = el)}>
               <ReportCard report={report} onCardClick={setSelectedReport} />
             </div>
